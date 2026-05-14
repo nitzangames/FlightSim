@@ -44,7 +44,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 // --- worldScene + chase camera ---
 const worldScene = new THREE.Scene();
-const worldCam = new THREE.PerspectiveCamera(60, 9/16, 1, 4500);
+const worldCam = new THREE.PerspectiveCamera(60, 9/16, 1, 8000);
 worldCam.rotation.order = 'YXZ';
 
 // --- menuScene + its own camera + its own lights ---
@@ -76,7 +76,8 @@ const terrain = createTerrain({
   scatterGeometries,
 });
 // Spawn near the world origin; spawn altitude is 120m above ground.
-const spawnPos = new THREE.Vector3(0, terrain.getHeight(0, 0) + 120, 0);
+// Spawn well above the tallest realistic peaks (arctic can reach ~700m)
+const spawnPos = new THREE.Vector3(0, terrain.getHeight(0, 0) + 500, 0);
 
 // --- Biome atmosphere: ensure fog + background exist for lerping ---
 const forest = BIOMES.find(b => b.name === 'forest');
