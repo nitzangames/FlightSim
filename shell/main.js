@@ -8,6 +8,8 @@ import { StateMachine } from '../lib/game/state.js';
 import { buildMenu } from '../lib/ui/menu.js';
 import { buildHUD } from '../lib/ui/hud.js';
 import { buildCrashOverlay } from '../lib/ui/crash-overlay.js';
+import { biomeAt, BIOMES } from '../lib/game/biomes.js';
+import { buildScatterRegistry } from '../lib/scatter/index.js';
 
 console.log('[flight-sim] ' + VERSION);
 
@@ -66,9 +68,56 @@ window.addEventListener('resize', resize);
 resize();
 
 // --- worldScene contents (terrain + plane + chase + physics + input) ---
-const terrain = createTerrain({ THREE, scene: worldScene, renderer, style: currentStyle, perfMode: 'high', seed });
+const scatterGeometries = buildScatterRegistry(THREE);
+const terrain = createTerrain({
+  THREE, scene: worldScene, renderer,
+  style: currentStyle, perfMode: 'high', seed,
+  biomeAt,
+  scatterGeometries,
+});
 // Spawn near the world origin; spawn altitude is 120m above ground.
 const spawnPos = new THREE.Vector3(0, terrain.getHeight(0, 0) + 120, 0);
+
+// --- Biome atmosphere: ensure fog + background exist for lerping ---
+const forest = BIOMES.find(b => b.name === 'forest');
+if (!worldScene.background) worldScene.background = new THREE.Color(forest.sky[0], forest.sky[1], forest.sky[2]);
+if (!worldScene.fog) worldScene.fog = new THREE.Fog(
+  new THREE.Color(forest.fog[0], forest.fog[1], forest.fog[2]),
+  forest.fogNear, forest.fogFar,
+);
+
+// Reusable Color instances so applyBiome doesn't allocate per frame.
+const _biomeSky  = new THREE.Color();
+const _biomeFog  = new THREE.Color();
+const _biomeSun  = new THREE.Color();
+const _biomeHemS = new THREE.Color();
+const _biomeHemG = new THREE.Color();
+
+// Per-frame palette interpolation toward the biome at the plane's position.
+// LERP rate ~0.02 → palette catches up to a new biome over ~1-2 seconds.
+const BIOME_LERP = 0.02;
+function lerp(a, b, t) { return a + (b - a) * t; }
+function applyBiome(planeX, planeZ) {
+  const b = biomeAt(planeX, planeZ);
+  if (!worldScene.fog || !terrain.sun || !terrain.hemi) return;
+  // Sky/background
+  _biomeSky.setRGB(b.sky[0], b.sky[1], b.sky[2]);
+  worldScene.background.lerp(_biomeSky, BIOME_LERP);
+  // Fog
+  _biomeFog.setRGB(b.fog[0], b.fog[1], b.fog[2]);
+  worldScene.fog.color.lerp(_biomeFog, BIOME_LERP);
+  worldScene.fog.near = lerp(worldScene.fog.near, b.fogNear, BIOME_LERP);
+  worldScene.fog.far  = lerp(worldScene.fog.far,  b.fogFar,  BIOME_LERP);
+  // Sun
+  _biomeSun.setRGB(b.sun[0], b.sun[1], b.sun[2]);
+  terrain.sun.color.lerp(_biomeSun, BIOME_LERP);
+  // Hemi
+  _biomeHemS.setRGB(b.hemiSky[0], b.hemiSky[1], b.hemiSky[2]);
+  _biomeHemG.setRGB(b.hemiGround[0], b.hemiGround[1], b.hemiGround[2]);
+  terrain.hemi.color.lerp(_biomeHemS, BIOME_LERP);
+  terrain.hemi.groundColor.lerp(_biomeHemG, BIOME_LERP);
+  terrain.hemi.intensity = lerp(terrain.hemi.intensity, b.hemiIntensity, BIOME_LERP);
+}
 
 let worldPlaneMesh = null;
 function setWorldPlane(key) {
@@ -150,6 +199,9 @@ const sm = new StateMachine({
         // Keep terrain streaming around the spawn point so chunks are loaded
         // by the time the player taps FLY.
         terrain.update(spawnPos);
+        // Use spawn position for the MENU palette so the picker shows the biome
+        // the player will spawn into.
+        applyBiome(spawnPos.x, spawnPos.z);
         // Rotate the turntable
         activeUI && activeUI.update && activeUI.update(dt);
       },
@@ -179,6 +231,7 @@ const sm = new StateMachine({
           if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * 12;
           chase.update(physics, dt);
           terrain.update(worldCam.position);
+          applyBiome(physics.x, physics.z);
           const alt = physics.y - terrain.getHeight(physics.x, physics.z);
           activeUI.update({ speed: 0, altitude: alt, countdown: flyingCountdown });
           return;
@@ -190,6 +243,7 @@ const sm = new StateMachine({
         if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * physics.speed * 0.5;
         chase.update(physics, dt);
         terrain.update(worldCam.position);
+        applyBiome(physics.x, physics.z);
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
