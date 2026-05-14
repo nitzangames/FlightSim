@@ -188,7 +188,10 @@ const sm = new StateMachine({
         chase.update(physics, dt);
         terrain.update(worldCam.position);
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
-        activeUI.update({ speed: physics.speed, altitude: alt });
+        // Pass the still-decrementing countdown so the HUD can flash "GO!" for
+        // the ~0.4s after the 3/2/1 sequence ends.
+        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown });
+        flyingCountdown -= dt;
         if (crashed(physics, terrain, physics.cfg.collisionRadius)) {
           sm.setState('CRASH');
         }
