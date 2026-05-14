@@ -38,10 +38,10 @@ describe('biomeAt', () => {
     expect(BIOMES).toContain(b);
   });
 
-  it('all 5 biomes are reachable in a 60km × 60km sweep', () => {
+  it('all 5 biomes are reachable in a 10km × 10km sweep', () => {
     const seen = new Set();
-    for (let x = -30000; x < 30000; x += 500) {
-      for (let z = -30000; z < 30000; z += 500) {
+    for (let x = -5000; x < 5000; x += 100) {
+      for (let z = -5000; z < 5000; z += 100) {
         seen.add(biomeAt(x, z).name);
         if (seen.size === KEYS.length) return;
       }
