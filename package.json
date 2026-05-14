@@ -1,0 +1,14 @@
+{
+  "name": "flight-sim",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "python3 -m http.server 8085"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}
