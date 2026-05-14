@@ -92,12 +92,15 @@ setWorldPlane(currentPlane);
 let physics = new PlanePhysics(PLANES[currentPlane].stats);
 function resetPhysicsToSpawn() {
   physics.x = spawnPos.x; physics.y = spawnPos.y; physics.z = spawnPos.z;
-  physics.yaw = 0; physics.pitch = 0; physics.roll = 0;
+  // Identity quaternion: nose at -Z, wings level.
+  physics.quat.x = 0; physics.quat.y = 0; physics.quat.z = 0; physics.quat.w = 1;
+  physics.forward.x = 0; physics.forward.y = 0; physics.forward.z = -1;
+  physics.up.x = 0; physics.up.y = 1; physics.up.z = 0;
   physics.speed = physics.cfg.maxSpeed;
   physics.fuel = physics.cfg.maxFuel;
   physics.engineOff = false;
   physics.fallSpeed = 0;
-  physics.smoothedPitchRate = 0; physics.smoothedYawRate = 0;
+  physics.smoothedPitchRate = 0; physics.smoothedRollRate = 0;
 }
 resetPhysicsToSpawn();
 
@@ -172,7 +175,7 @@ const sm = new StateMachine({
         if (flyingCountdown > 0) {
           flyingCountdown -= dt;
           worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
-          worldPlaneMesh.rotation.set(physics.pitch, physics.yaw, physics.roll, 'YXZ');
+          worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
           if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * 12;
           chase.update(physics, dt);
           terrain.update(worldCam.position);
@@ -183,7 +186,7 @@ const sm = new StateMachine({
         physics.update({ ...input.read(), dt });
         clampToCeiling(physics, CEILING);
         worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
-        worldPlaneMesh.rotation.set(physics.pitch, physics.yaw, physics.roll, 'YXZ');
+        worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
         if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * physics.speed * 0.5;
         chase.update(physics, dt);
         terrain.update(worldCam.position);
