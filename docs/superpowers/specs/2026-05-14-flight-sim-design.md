@@ -150,7 +150,7 @@ Three states. Terrain object exists for the entire session (built once at boot).
 1. Build renderer, two scenes (`menuScene`, `worldScene`), two cameras. Canvas + boot screen.
 2. Read or mint `flightsim.seed`, `flightsim.plane`, `flightsim.style` from localStorage.
 3. `startWorld(seed, style)` — build `terrain` into `worldScene` via `createTerrain(...)`, build plane mesh for `currentPlane`, build `physics` parked at deterministic spawn `(0, terrain.getHeight(0,0)+120, 0)`, build `chase`. `worldReady = true`.
-4. Build turntable rig in `menuScene` with a clone of `currentPlane`'s mesh.
+4. Build turntable rig in `menuScene` by calling `PLANES[currentPlane].build(THREE)` again — a separate `THREE.Group` from the worldScene plane (three.js objects can only belong to one scene). Add a hemisphere light + directional light to `menuScene` (its own lights — worldScene gets its lights from `createTerrain(...)`).
 5. `sm.start()` → enters MENU. Renderer draws `menuScene`. Terrain streams invisibly in `worldScene` via per-frame `terrain.update(spawnPos)`.
 6. `requestAnimationFrame(frame)` starts the loop.
 7. `PlaySDK.ready()` on the next tick.
@@ -191,9 +191,9 @@ Three states. Terrain object exists for the entire session (built once at boot).
 ┌─────────────────────────────────────┐
 │                       CARTOGRAPH ▾  │  ← Subheading 66 (canvas px), top-right
 │                                     │
-│        [ 3D plane preview ]         │  ← worldCam → menuScene turntable rig,
+│        [ 3D plane preview ]         │  ← menuCam → menuScene turntable rig,
 │         (real three.js,              │     fills top ~58% of stage; renders
-│          rotates 0.5 rad/s)         │     the actual plane mesh
+│          rotates 0.5 rad/s)         │     a dedicated menu plane mesh
 │                                     │
 │           WW1 BIPLANE               │  ← Heading 90, centered
 │                                     │
@@ -209,7 +209,7 @@ Three states. Terrain object exists for the entire session (built once at boot).
 ```
 
 - **Style dropdown** (top-right): native `<select>`, four options (lowpoly / stylized / realistic / cartograph), styled to fit the dark palette. On change → `terrain.setStyle(newStyle)` + persist.
-- **Plane preview**: occupies top ~58% of the stage. The `menuScene` turntable rig holds the currently-selected plane mesh, rotated about Y at 0.5 rad/s by the menu update loop. Lit by a hemisphere light + directional light shared by both scenes.
+- **Plane preview**: occupies top ~58% of the stage. The `menuScene` turntable rig holds a dedicated copy of the currently-selected plane (built by calling `PLANES[key].build(THREE)` — three.js objects cannot belong to two scenes, so the menu has its own plane mesh independent of the worldScene one). Rotated about Y at 0.5 rad/s by the menu update loop. The `menuScene` has its own hemisphere + directional lights (the worldScene's lights are owned by the terrain).
 - **Plane name** (Heading 90): from `PLANES[currentPlane].name`.
 - **Stat bars** (Body 36): visual `stats.maxSpeed / 200` and `stats.maxPitchRate / 0.85` ratios as filled-block character glyphs (`███░░░`). No numbers.
 - **◄ / ►**: cycle through `PLANE_ORDER`. Each press calls `onPlaneChange(nextKey)`.
