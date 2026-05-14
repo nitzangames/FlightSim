@@ -239,5 +239,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 requestAnimationFrame(() => {
-  if (window.PlaySDK && window.PlaySDK.ready) window.PlaySDK.ready();
+  // PlaySDK uses a Proxy that throws on unknown property access; calling
+  // .onReady(cb) is the actual ready-signal API.
+  if (window.PlaySDK && typeof window.PlaySDK.onReady === 'function') {
+    window.PlaySDK.onReady(() => {});
+  }
 });
