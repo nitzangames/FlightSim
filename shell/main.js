@@ -21,7 +21,6 @@ const uiRoot = document.getElementById('ui-root');
 // --- localStorage keys ---
 const LS_SEED  = 'flightsim.seed';
 const LS_PLANE = 'flightsim.plane';
-const LS_STYLE = 'flightsim.style';
 
 function readOrMintSeed() {
   const cached = localStorage.getItem(LS_SEED);
@@ -36,11 +35,8 @@ function readOrMintSeed() {
 
 const seed = readOrMintSeed();
 let currentPlane = localStorage.getItem(LS_PLANE) || 'biplane';
-// Default style: 'stylized' for smooth biome colors. 'cartograph' is now also
-// biome-aware (patchwork brightness variation over biome bands). 'lowpoly'
-// still snaps to a hardcoded forest palette — migrate it away.
-let currentStyle = localStorage.getItem(LS_STYLE) || 'stylized';
-if (currentStyle === 'lowpoly') currentStyle = 'stylized';
+// Only the cartograph style remains — the others were removed.
+const currentStyle = 'cartograph';
 
 // --- Renderer (one, shared between scenes) ---
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !navigator.userAgent.match(/iPhone|Android|iPad/) });
@@ -189,7 +185,7 @@ const sm = new StateMachine({
         clearUI();
         activeUI = buildMenu({
           THREE, root: uiRoot, menuScene, version: VERSION,
-          currentPlane, currentStyle,
+          currentPlane,
           onPlaneChange: (key) => {
             if (key === currentPlane) return;
             currentPlane = key;
@@ -198,11 +194,6 @@ const sm = new StateMachine({
             // Rebuild physics with the new plane's stats and reset pose
             physics = new PlanePhysics(PLANES[key].stats);
             resetPhysicsToSpawn();
-          },
-          onStyleChange: (style) => {
-            currentStyle = style;
-            localStorage.setItem(LS_STYLE, style);
-            terrain.setStyle(style);
           },
           onPlay: () => sm.setState('FLYING'),
         });
