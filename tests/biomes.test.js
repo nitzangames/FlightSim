@@ -26,7 +26,8 @@ describe('BIOMES roster', () => {
       for (const bandName of BAND_NAMES) {
         expect(b.bands[bandName].length).toBe(3);
       }
-      expect(SCATTER_KEYS).toContain(b.scatterKey);
+      // scatterKey is one of the known scatter mesh types, or null = no scatter
+      expect(b.scatterKey === null || SCATTER_KEYS.includes(b.scatterKey)).toBe(true);
     }
   });
 
