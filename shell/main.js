@@ -36,12 +36,11 @@ function readOrMintSeed() {
 
 const seed = readOrMintSeed();
 let currentPlane = localStorage.getItem(LS_PLANE) || 'biplane';
-// Default style: 'stylized' uses vertex colors as-is, so biome bands actually
-// drive ground colors. (cartograph and lowpoly have shader overrides that
-// IGNORE vertex colors — they were the cause of "biomes don't work".)
-// Migrate existing 'cartograph' saves to 'stylized' for the same reason.
+// Default style: 'stylized' for smooth biome colors. 'cartograph' is now also
+// biome-aware (patchwork brightness variation over biome bands). 'lowpoly'
+// still snaps to a hardcoded forest palette — migrate it away.
 let currentStyle = localStorage.getItem(LS_STYLE) || 'stylized';
-if (currentStyle === 'cartograph' || currentStyle === 'lowpoly') currentStyle = 'stylized';
+if (currentStyle === 'lowpoly') currentStyle = 'stylized';
 
 // --- Renderer (one, shared between scenes) ---
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !navigator.userAgent.match(/iPhone|Android|iPad/) });
