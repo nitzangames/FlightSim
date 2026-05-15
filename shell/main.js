@@ -120,6 +120,12 @@ function applyBiome(planeX, planeZ) {
   terrain.hemi.intensity = lerp(terrain.hemi.intensity, b.hemiIntensity, BIOME_LERP);
 }
 
+// In-flight plane scale. Plane meshes are built at real-world size (biplane
+// 7.4m wingspan etc.) for the menu turntable, but in-world they're scaled
+// down so they read as a small craft against the big terrain. Collision
+// radius is scaled with the mesh so crashes line up with what's drawn.
+const WORLD_PLANE_SCALE = 0.25;
+
 let worldPlaneMesh = null;
 function setWorldPlane(key) {
   if (worldPlaneMesh) {
@@ -135,6 +141,7 @@ function setWorldPlane(key) {
     worldScene.remove(worldPlaneMesh);
   }
   worldPlaneMesh = PLANES[key].build(THREE);
+  worldPlaneMesh.scale.setScalar(WORLD_PLANE_SCALE);
   worldScene.add(worldPlaneMesh);
 }
 setWorldPlane(currentPlane);
@@ -250,7 +257,7 @@ const sm = new StateMachine({
         // the ~0.4s after the 3/2/1 sequence ends.
         activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown });
         flyingCountdown -= dt;
-        if (crashed(physics, terrain, physics.cfg.collisionRadius)) {
+        if (crashed(physics, terrain, physics.cfg.collisionRadius * WORLD_PLANE_SCALE)) {
           sm.setState('CRASH');
         }
       },
