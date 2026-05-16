@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>POI mockups · Flight Sim</title>
+  <style>
+    html, body { margin:0; padding:24px; background:#0e0e1a; color:#fff;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      box-sizing:border-box; min-height:100vh; }
+    h1 { margin: 0 0 6px; font-size: 22px; opacity: 0.90; }
+    .sub { margin: 0 0 18px; font-size: 13px; opacity: 0.6; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1100px;
+    }
+    .card {
+      background: #1a1a2a;
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    }
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+    .thumb canvas { display:block; width:100%; height:100%; }
+    .label {
+      margin: 10px 4px 0;
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .label h2 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: 1px; }
+    .label .anchor { font-size: 12px; opacity: 0.55; }
+    .desc { margin: 6px 4px 0; font-size: 12.5px; opacity: 0.7; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <h1>POI mockups · pick one to design and ship first</h1>
+  <p class="sub">Each render uses real three.js building meshes + a small terrain patch. Anchor tag = which terrain feature the placement rule would tie this POI to.</p>
+  <div class="grid">
+    <div class="card">
+      <div class="thumb" id="town"><canvas></canvas></div>
+      <div class="label"><h2>TOWN</h2><span class="anchor">anchor: lakeside / river bend</span></div>
+      <div class="desc">8–15 buildings clustered along a street parallel to water. Mix of 1–2 story, warm cream walls, red/brown roofs, central square + dock.</div>
+    </div>
+    <div class="card">
+      <div class="thumb" id="castle"><canvas></canvas></div>
+      <div class="label"><h2>CASTLE</h2><span class="anchor">anchor: ridge / hill summit</span></div>
+      <div class="desc">Central keep + curtain wall + 4 corner towers, conical roofs, gray stone palette. Visible from kilometers — primary landmark type.</div>
+    </div>
+    <div class="card">
+      <div class="thumb" id="monastery"><canvas></canvas></div>
+      <div class="label"><h2>MONASTERY</h2><span class="anchor">anchor: isolated arctic / mountain peak</span></div>
+      <div class="desc">Central church with steeple + bell tower, cloister square, low surrounding buildings. Whitewashed walls, dark slate roofs.</div>
+    </div>
+    <div class="card">
+      <div class="thumb" id="village"><canvas></canvas></div>
+      <div class="label"><h2>VILLAGE</h2><span class="anchor">anchor: lowland / forest clearing</span></div>
+      <div class="desc">4–6 small houses + barn + windmill, scattered loosely. Brown timber walls, red roofs. Smaller scale than towns — the in-between density.</div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module">
+    // Common helpers ------------------------------------------------------
+    const SIZE = 512;
+
+    function makeRenderer(canvas) {
+      const r = new THREE.WebGLRenderer({ canvas, antialias: true });
+      r.setPixelRatio(window.devicePixelRatio || 1);
+      r.setSize(SIZE, SIZE, false);
+      return r;
+    }
+
+    function makeScene(skyStops) {
+      const scene = new THREE.Scene();
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      skyStops.forEach(([t, col]) => g.addColorStop(t, col));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+      return scene;
+    }
+
+    function addLights(scene, { sunDir = [60, 80, 40], sunColor = 0xfff5e0, hemiSky = 0xb0c8e8, hemiGround = 0x5a6840, sunI = 1.0, hemiI = 0.55 } = {}) {
+      const sun = new THREE.DirectionalLight(sunColor, sunI);
+      sun.position.set(...sunDir);
+      scene.add(sun);
+      scene.add(new THREE.HemisphereLight(hemiSky, hemiGround, hemiI));
+    }
+
+    function box(w, h, d, color, x = 0, y = 0, z = 0) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshLambertMaterial({ color, flatShading: true })
+      );
+      m.position.set(x, y + h / 2, z);
+      return m;
+    }
+    function roof(w, h, d, color, x = 0, y = 0, z = 0, ridgeAxis = 'z') {
+      // Pyramidal/prism roof: a 4-sided pyramid stretched along one axis.
+      // Build by 4-triangle BufferGeometry so we can stretch a ridge line.
+      const hw = w / 2, hd = d / 2;
+      const ridgeStart = ridgeAxis === 'z' ? [0, h, -hd] : [-hw, h, 0];
+      const ridgeEnd   = ridgeAxis === 'z' ? [0, h,  hd] : [ hw, h, 0];
+      const c0 = [-hw, 0, -hd], c1 = [hw, 0, -hd], c2 = [hw, 0, hd], c3 = [-hw, 0, hd];
+      // Build the prism with EXPLICIT face normals — flat shading per
+      // face, no shared vertices, no computeVertexNormals guessing.
+      // Each face is a separate triangle/quad with its own copy of the
+      // corner vertices and a hand-computed normal.
+      const verts = [];
+      const normals = [];
+      function normalize3(v) {
+        const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        return [v[0]/len, v[1]/len, v[2]/len];
+      }
+      function addTri(a, b, c, n) {
+        verts.push(...a, ...b, ...c);
+        normals.push(...n, ...n, ...n);
+      }
+      // Slope normals: from inside to outside, perpendicular to the slope.
+      // Right slope (+X side) has normal (+X, +up). Left slope (-X) has (-X, +up).
+      // Same idea for the X-ridged case.
+      if (ridgeAxis === 'z') {
+        // Right slope normal: rises from +hw,0 to 0,h — points in +X, +Y.
+        const rN = normalize3([h, hw, 0]);
+        const lN = normalize3([-h, hw, 0]);
+        // Right slope (quad split into 2 tris): c1, c2, ridgeEnd, ridgeStart
+        addTri(c1, c2, ridgeEnd, rN);
+        addTri(c1, ridgeEnd, ridgeStart, rN);
+        // Left slope: c3, c0, ridgeStart, ridgeEnd
+        addTri(c3, c0, ridgeStart, lN);
+        addTri(c3, ridgeStart, ridgeEnd, lN);
+        // Front gable (-Z) — normal (0, 0, -1). CCW from -Z: c0 (LEFT-bottom) → c1 (RIGHT-bottom) → ridgeStart (top)
+        addTri(c0, c1, ridgeStart, [0, 0, -1]);
+        // Back gable (+Z) — normal (0, 0, +1). CCW from +Z: c2 (RIGHT-bottom from +Z view) → c3 (LEFT-bottom) → ridgeEnd
+        addTri(c2, c3, ridgeEnd, [0, 0, 1]);
+      } else {
+        const rN = normalize3([hw, h, 0]);   // unused — keep API symmetric
+        // Ridge along X: slopes face +Z and -Z.
+        const fN = normalize3([0, hw, h]);   // front slope (+Z) — actually we want normal pointing +Z (+up)
+        const bN = normalize3([0, hw, -h]);  // back slope (-Z)
+        // Front slope (+Z side): c3, c2, ridgeEnd, ridgeStart
+        addTri(c3, c2, ridgeEnd, fN);
+        addTri(c3, ridgeEnd, ridgeStart, fN);
+        // Back slope (-Z): c1, c0, ridgeStart, ridgeEnd
+        addTri(c1, c0, ridgeStart, bN);
+        addTri(c1, ridgeStart, ridgeEnd, bN);
+        // Left gable (-X) — normal (-1, 0, 0). c0, c3 at bottom, ridge at x=-hw.
+        addTri(c0, c3, ridgeStart, [-1, 0, 0]);
+        // Right gable (+X). c2, c1 at bottom, ridge at x=+hw.
+        addTri(c2, c1, ridgeEnd, [1, 0, 0]);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      g.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
+      // DoubleSide so winding accidents (which we hit while iterating) don't
+      // invisible-cull faces. With explicit normals set per-face above, the
+      // shading direction is what we want regardless of which side is "front".
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, flatShading: true, side: THREE.DoubleSide }));
+      m.position.set(x, y, z);
+      return m;
+    }
+    function cone(rBase, h, color, x = 0, y = 0, z = 0, segments = 8) {
+      const m = new THREE.Mesh(
+        new THREE.ConeGeometry(rBase, h, segments),
+        new THREE.MeshLambertMaterial({ color, flatShading: true })
+      );
+      m.position.set(x, y + h / 2, z);
+      return m;
+    }
+    function cyl(r, h, color, x = 0, y = 0, z = 0, segments = 12) {
+      const m = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, h, segments),
+        new THREE.MeshLambertMaterial({ color, flatShading: true })
+      );
+      m.position.set(x, y + h / 2, z);
+      return m;
+    }
+
+    // Simple textured "ground" plane: subdivided plane with per-vertex Y
+    // perturbation + per-vertex color variation. The terrain types are tuned
+    // to suggest the POI's anchor.
+    function ground(scene, { kind = 'grass', size = 60, segs = 24 } = {}) {
+      const geo = new THREE.PlaneGeometry(size, size, segs, segs);
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position;
+      const colors = new Float32Array(pos.count * 3);
+      const palette = {
+        grass:    [[0.34,0.50,0.24],[0.42,0.58,0.30],[0.30,0.46,0.22]],
+        ridge:    [[0.50,0.46,0.36],[0.58,0.54,0.42],[0.46,0.42,0.32]],
+        mountain: [[0.85,0.88,0.92],[0.74,0.78,0.84],[0.66,0.70,0.78]],
+        lowland:  [[0.56,0.58,0.28],[0.66,0.66,0.36],[0.50,0.52,0.24]],
+      }[kind];
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        // Per-kind height field
+        let y = 0;
+        if (kind === 'grass')    y = Math.sin(x * 0.18) * 0.4 + Math.cos(z * 0.22) * 0.3;
+        if (kind === 'ridge')    y = Math.max(0, 5 - Math.abs(x) * 0.15) + Math.sin(z * 0.18) * 0.5;
+        if (kind === 'mountain') {
+          // Peak BEHIND the monastery (negative Z, away from camera) with a
+          // plateau around the buildings so they sit on a flat shoulder.
+          const dz = z + 18, dx = x;
+          y = Math.max(0, 16 - Math.sqrt(dx*dx + dz*dz) * 0.55) + Math.sin(x * 0.3) * 0.4;
+          // Plateau dip where buildings sit
+          const dPlat = Math.sqrt(x*x + (z-6)*(z-6));
+          if (dPlat < 14) y = Math.min(y, 1.2 + Math.sin(x*0.2) * 0.3);
+        }
+        if (kind === 'lowland')  y = Math.sin(x * 0.10) * 0.5 + Math.cos(z * 0.12) * 0.4;
+        pos.setY(i, y);
+        const c = palette[Math.floor(Math.random() * palette.length)];
+        colors[i * 3] = c[0]; colors[i * 3 + 1] = c[1]; colors[i * 3 + 2] = c[2];
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+      scene.add(m);
+
+      // Optional water plane for lakeside
+      if (kind === 'lakeside') {
+        // (handled by separate kind below if needed)
+      }
+      return m;
+    }
+
+    function waterPlane(scene, color = 0x2d6ea3, size = 80) {
+      const g = new THREE.PlaneGeometry(size, size);
+      g.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }));
+      m.position.y = -0.2;
+      scene.add(m);
+    }
+
+    // --- TOWN ----------------------------------------------------------
+    function buildTown(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = makeScene([
+        [0.0, '#5f7fa8'], [0.55, '#bcd3e2'], [0.85, '#f0e2c0'], [1.0, '#d4c290'],
+      ]);
+      scene.fog = new THREE.Fog(0xc8b888, 60, 250);
+      addLights(scene, { sunDir: [40, 60, 80], sunColor: 0xfff5d0, hemiSky: 0xd6e0c4, hemiGround: 0x6a5028, sunI: 1.0, hemiI: 0.5 });
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(22, 14, 32); camera.lookAt(0, 2, 0);
+
+      // Lakeside: water on +Z half, ground on -Z half (loose).
+      const land = ground(scene, { kind: 'lowland', size: 80, segs: 30 });
+      waterPlane(scene, 0x2d6ea3, 80);
+      land.position.z = -10; // shift land back so the foreground edge meets water
+
+      // House factory: warm cream walls, red roof, variable size.
+      const WALL = [0xf2e3c2, 0xe6d3a8, 0xdec496];
+      const ROOF = [0x9c3a2c, 0x7a2e22, 0xa84a36, 0x6b2a1f];
+      function house(x, z, w = 3, h = 3, d = 4, rot = 0, twoStory = false) {
+        const g = new THREE.Group();
+        const wallColor = WALL[(x*3+z*7|0) % WALL.length];
+        const roofColor = ROOF[(x*5+z*3|0) % ROOF.length];
+        const hh = twoStory ? h * 1.6 : h;
+        g.add(box(w, hh, d, wallColor));
+        g.add(roof(w, h * 0.7, d, roofColor, 0, hh, 0, 'z'));
+        g.position.set(x, 0, z);
+        g.rotation.y = rot;
+        return g;
+      }
+      // A loose grid of houses along a "street" (z=-3 line)
+      const positions = [
+        [-12, -2, 3, 3, 4, 0, false],
+        [-7,  -2, 3, 3, 4, 0, true],
+        [-2,  -3, 4, 3, 5, 0, true],
+        [ 3,  -2, 3, 3, 4, 0, false],
+        [ 8,  -2, 3, 3, 4, 0, false],
+        [ 12, -3, 3.5, 3.2, 4.5, 0, true],
+        [-10, -7, 3, 3, 4, Math.PI/2, false],
+        [-4,  -8, 3.5, 3, 4, 0, false],
+        [ 2,  -8, 3, 3, 3.5, 0, false],
+        [ 8,  -7, 3, 3, 4, Math.PI/2, false],
+        [-5,  -13, 4, 3.5, 5, 0, true],   // a slightly bigger building (e.g., town hall)
+        [ 5,  -13, 3, 3, 4, 0, false],
+      ];
+      for (const p of positions) scene.add(house(...p));
+
+      // Church / town hall: taller building with steeple
+      const hall = new THREE.Group();
+      hall.add(box(4, 5, 6, 0xe6d3a8));
+      hall.add(roof(4, 1.5, 6, 0x6b2a1f, 0, 5, 0, 'z'));
+      hall.add(box(1.4, 7, 1.4, 0xe6d3a8, 0, 0, -2.5));  // bell tower
+      hall.add(roof(1.4, 1.8, 1.4, 0x6b2a1f, 0, 7, -2.5));
+      hall.position.set(0, 0, -16);
+      scene.add(hall);
+
+      // Dock — boards extending into water
+      const dock = box(3, 0.2, 6, 0x6a4a2a, -3, 0.5, 4);
+      scene.add(dock);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- CASTLE --------------------------------------------------------
+    function buildCastle(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = makeScene([
+        [0.0, '#3a4a6a'], [0.5, '#7090b8'], [0.85, '#c8d0d8'], [1.0, '#e8e8e8'],
+      ]);
+      scene.fog = new THREE.Fog(0xb8c4d4, 60, 280);
+      addLights(scene, { sunDir: [-40, 70, 30], sunColor: 0xfff5e0, hemiSky: 0xb0c8e8, hemiGround: 0x5a5040, sunI: 1.0, hemiI: 0.55 });
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(28, 16, 30); camera.lookAt(0, 4, 0);
+
+      ground(scene, { kind: 'ridge', size: 80, segs: 30 });
+
+      const STONE     = 0x9a948c;
+      const STONE_LIT = 0xb0a89c;
+      const ROOF_CONE = 0x4a3a2e;
+
+      // Curtain wall: 4 walls forming a square + 4 corner towers
+      const WALL_H = 5, WALL_T = 1.2, WALL_LEN = 14;
+      const TOWER_R = 2.0, TOWER_H = 8;
+      // 4 walls (centered on origin, ridge plateau at y≈3)
+      const yBase = 3;
+      // Crenellation: split wall as base + crenel teeth on top
+      function wall(x, z, len, rotY) {
+        const g = new THREE.Group();
+        g.add(box(len, WALL_H, WALL_T, STONE));
+        // 5 crenel teeth across the top
+        const teeth = 5;
+        const teethW = (len - WALL_T) / (teeth * 2 + 1);
+        for (let i = 0; i < teeth; i++) {
+          const tx = -len / 2 + teethW * (1 + 2 * i + 0.5);
+          g.add(box(teethW, 0.8, WALL_T, STONE_LIT, tx, WALL_H, 0));
+        }
+        g.position.set(x, yBase, z);
+        g.rotation.y = rotY;
+        return g;
+      }
+      scene.add(wall(0, -WALL_LEN/2, WALL_LEN, 0));
+      scene.add(wall(0,  WALL_LEN/2, WALL_LEN, 0));
+      scene.add(wall(-WALL_LEN/2, 0, WALL_LEN, Math.PI/2));
+      scene.add(wall( WALL_LEN/2, 0, WALL_LEN, Math.PI/2));
+
+      // 4 corner towers (taller than walls, conical roof)
+      function tower(x, z) {
+        const g = new THREE.Group();
+        g.add(cyl(TOWER_R, TOWER_H, STONE));
+        g.add(cone(TOWER_R + 0.2, 2.5, ROOF_CONE, 0, TOWER_H));
+        g.position.set(x, yBase, z);
+        return g;
+      }
+      const HW = WALL_LEN / 2;
+      scene.add(tower(-HW, -HW));
+      scene.add(tower( HW, -HW));
+      scene.add(tower(-HW,  HW));
+      scene.add(tower( HW,  HW));
+
+      // Central keep: bigger, taller, with a peaked roof
+      const keep = new THREE.Group();
+      keep.add(box(6, 10, 6, STONE_LIT));
+      keep.add(roof(6, 2.5, 6, ROOF_CONE, 0, 10, 0, 'x'));
+      keep.position.set(0, yBase, 0);
+      scene.add(keep);
+
+      // Inner courtyard small chapel
+      const chapel = new THREE.Group();
+      chapel.add(box(2.5, 3, 4, STONE));
+      chapel.add(roof(2.5, 1, 4, ROOF_CONE, 0, 3, 0, 'z'));
+      chapel.position.set(4, yBase, 4);
+      scene.add(chapel);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- MONASTERY -----------------------------------------------------
+    function buildMonastery(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = makeScene([
+        [0.0, '#7a8aa8'], [0.5, '#b8c8d8'], [0.85, '#dde2ea'], [1.0, '#f0f2f4'],
+      ]);
+      scene.fog = new THREE.Fog(0xc0c8d0, 70, 280);
+      addLights(scene, { sunDir: [30, 90, 50], sunColor: 0xffeeff, hemiSky: 0xc0d0e0, hemiGround: 0x807a8a, sunI: 0.95, hemiI: 0.65 });
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(20, 12, 30); camera.lookAt(0, 3, 4);
+
+      ground(scene, { kind: 'mountain', size: 80, segs: 30 });
+
+      const WALL_WHITE = 0xeae6dc;
+      const WALL_DARK  = 0xd4cdbc;
+      const SLATE      = 0x2e3a4a;
+      const SLATE_LIT  = 0x46566a;
+
+      const yBase = 1.2;
+
+      // Central church (cross plan): long nave + short transept + steeple
+      const church = new THREE.Group();
+      // Nave
+      church.add(box(5, 5, 12, WALL_WHITE));
+      church.add(roof(5, 2.5, 12, SLATE, 0, 5, 0, 'z'));
+      // Transept (across)
+      church.add(box(9, 4.5, 4, WALL_WHITE, 0, 0, -1));
+      church.add(roof(9, 2, 4, SLATE, 0, 4.5, -1, 'x'));
+      // Bell tower at the FRONT of nave
+      church.add(box(2.5, 9, 2.5, WALL_DARK, 0, 0, -6));
+      church.add(roof(2.5, 2, 2.5, SLATE_LIT, 0, 9, -6, 'x'));
+      church.add(cone(0.4, 1.5, SLATE_LIT, 0, 11, -6, 6));   // spire
+      church.position.set(0, yBase, 0);
+      scene.add(church);
+
+      // Cloister: 4 low buildings around a courtyard south of the church
+      function cloisterBuilding(x, z, w, d) {
+        const g = new THREE.Group();
+        g.add(box(w, 3, d, WALL_WHITE));
+        g.add(roof(w, 1.2, d, SLATE, 0, 3, 0, w > d ? 'z' : 'x'));
+        g.position.set(x, yBase, z);
+        return g;
+      }
+      // 4 sides (south side open / shorter for entry)
+      scene.add(cloisterBuilding(-6, 9, 2.5, 8));   // west wing
+      scene.add(cloisterBuilding( 6, 9, 2.5, 8));   // east wing
+      scene.add(cloisterBuilding( 0, 13, 14, 2.5)); // south wing
+      // Small inner chapel
+      const ic = new THREE.Group();
+      ic.add(box(2, 2.5, 2, WALL_WHITE));
+      ic.add(roof(2, 0.8, 2, SLATE, 0, 2.5, 0, 'z'));
+      ic.position.set(0, yBase, 9);
+      scene.add(ic);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- VILLAGE -------------------------------------------------------
+    function buildVillage(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = makeScene([
+        [0.0, '#6090c0'], [0.5, '#b8d0e8'], [0.85, '#f0e2c0'], [1.0, '#e0c890'],
+      ]);
+      scene.fog = new THREE.Fog(0xc8c098, 60, 240);
+      addLights(scene, { sunDir: [60, 80, 40], sunColor: 0xfff5d0, hemiSky: 0xc8d8e8, hemiGround: 0x6a7028, sunI: 1.05, hemiI: 0.55 });
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(22, 12, 26); camera.lookAt(0, 1.5, 0);
+
+      ground(scene, { kind: 'grass', size: 80, segs: 30 });
+
+      const WALL_TIMBER = [0x9c7048, 0x8a5a36, 0xa67a52];
+      const ROOF_THATCH = [0x8c6028, 0x6a4818, 0x9c7038];
+
+      function village_house(x, z, w = 3, h = 2.5, d = 4, rot = 0) {
+        const g = new THREE.Group();
+        const wallColor = WALL_TIMBER[(x*3+z*7|0) % WALL_TIMBER.length];
+        const roofColor = ROOF_THATCH[(x*5+z*3|0) % ROOF_THATCH.length];
+        g.add(box(w, h, d, wallColor));
+        g.add(roof(w, h * 0.6, d, roofColor, 0, h, 0, 'z'));
+        g.position.set(x, 0, z);
+        g.rotation.y = rot;
+        return g;
+      }
+
+      // Scattered houses around a loose central area
+      scene.add(village_house(-6, -2, 3, 2.5, 4, 0));
+      scene.add(village_house(-1, -3, 3, 2.5, 4, 0));
+      scene.add(village_house( 5, -2, 3, 2.5, 4, 0));
+      scene.add(village_house( 9,  3, 3, 2.5, 4, Math.PI / 4));
+      scene.add(village_house(-7,  4, 3, 2.5, 4, -Math.PI / 6));
+
+      // Barn — bigger, different color
+      const barn = new THREE.Group();
+      barn.add(box(5, 3.5, 7, 0x8c2818));
+      barn.add(roof(5, 1.6, 7, 0x6a1a10, 0, 3.5, 0, 'z'));
+      barn.position.set(0, 0, 7);
+      scene.add(barn);
+
+      // Windmill — cylindrical tower + cone roof + cross blades
+      const windmill = new THREE.Group();
+      windmill.add(cyl(1.5, 6, 0xd4c8a0));
+      windmill.add(cone(1.6, 1.4, 0x6a4818, 0, 6, 0, 8));
+      // 4 blades
+      const bladeMat = new THREE.MeshLambertMaterial({ color: 0xeae6dc, flatShading: true });
+      const bladeGeo = new THREE.BoxGeometry(0.4, 4.5, 0.15);
+      const hub = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const b = new THREE.Mesh(bladeGeo, bladeMat);
+        b.position.y = 2.0;   // offset from parent group origin
+        const bw = new THREE.Group();
+        bw.rotation.z = i * Math.PI / 2;   // rotate ONLY the parent group
+        bw.add(b);
+        hub.add(bw);
+      }
+      hub.position.set(0, 5.5, 1.5);
+      hub.rotation.x = -Math.PI / 12;
+      windmill.add(hub);
+      windmill.position.set(-12, 0, -2);
+      scene.add(windmill);
+
+      renderer.render(scene, camera);
+    }
+
+    const get = id => document.querySelector(`#${id} canvas`);
+    buildTown(get('town'));
+    buildCastle(get('castle'));
+    buildMonastery(get('monastery'));
+    buildVillage(get('village'));
+  </script>
+</body>
+</html>
