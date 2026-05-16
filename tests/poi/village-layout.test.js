@@ -41,8 +41,12 @@ describe('layoutVillage', () => {
     expect(types).toContain('barn');
     expect(types).toContain('windmill');
     expect(types).toContain('church');
-    expect(out.length).toBeGreaterThanOrEqual(11);
-    expect(out.length).toBeLessThanOrEqual(18);
+    // Implementer's algorithm yields 12–16 across 100 seeds. Tighten the
+    // lower bound to 12 so a regression (e.g. windmill dropped silently)
+    // can't slip past — the type checks above already guard which
+    // specials must be present.
+    expect(out.length).toBeGreaterThanOrEqual(12);
+    expect(out.length).toBeLessThanOrEqual(17);
   });
 
   it('all buildings sit on ground at village.groundY', () => {
