@@ -231,7 +231,13 @@ const sm = new StateMachine({
           worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
           worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
           if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * 12;
-          chase.update(physics, dt);
+          // Pass dt=0 so the chase camera's velocity feedforward is zeroed.
+          // The plane isn't being physically advanced during the countdown
+          // (physics.update is skipped), but physics.speed still reads maxSpeed
+          // from resetPhysicsToSpawn — without this, the lead term parks the
+          // camera ~speed*dt*LEAD_FRAMES forward of where it sits in flight,
+          // and jitters with dt variance.
+          chase.update(physics, 0);
           terrain.update(worldCam.position);
           applyBiome(physics.x, physics.z);
           const alt = physics.y - terrain.getHeight(physics.x, physics.z);
