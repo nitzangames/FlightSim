@@ -55,4 +55,27 @@ describe('buildVillageRegistry', () => {
     const cz = Math.floor(v.z / CHUNK);
     expect(reg.affectingChunk(cx, cz, CHUNK)).toContain(v);
   });
+
+  it('affectingChunk catches villages spilling in from an adjacent chunk', () => {
+    // The behaviour that distinguishes affectingChunk from inChunk: a village
+    // whose anchor is in chunk N can still affect neighbour N±1 because its
+    // pad/falloff radius reaches across the boundary.
+    const reg = buildVillageRegistry(opts);
+    const CHUNK = 512;
+    // Find a village whose anchor is within `falloffRadius` of a chunk edge.
+    const v = reg.all.find(x => {
+      const localX = ((x.x % CHUNK) + CHUNK) % CHUNK;
+      return localX < x.falloffRadius || localX > CHUNK - x.falloffRadius;
+    });
+    expect(v).toBeDefined();
+    const anchorChunkX = Math.floor(v.x / CHUNK);
+    const anchorChunkZ = Math.floor(v.z / CHUNK);
+    // Whichever side the village is near, the neighbour on that side sees it.
+    const localX = ((v.x % CHUNK) + CHUNK) % CHUNK;
+    const neighborDX = localX < v.falloffRadius ? -1 : 1;
+    const affected = reg.affectingChunk(anchorChunkX + neighborDX, anchorChunkZ, CHUNK);
+    expect(affected).toContain(v);
+    // Sanity: inChunk on the neighbour does NOT contain it (anchor isn't there).
+    expect(reg.inChunk(anchorChunkX + neighborDX, anchorChunkZ, CHUNK)).not.toContain(v);
+  });
 });
