@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Thumbnail mockups · Flight Sim</title>
+  <style>
+    html, body { margin:0; padding:24px; background:#0e0e1a; color:#fff;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      box-sizing:border-box; min-height:100vh; }
+    h1 { margin: 0 0 18px; font-size: 22px; opacity: 0.85; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1100px;
+    }
+
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    }
+    .thumb canvas { display:block; width:100%; height:100%; }
+
+    /* Title overlay — different per thumbnail variant */
+    .title {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow:
+        0 0 8px rgba(0,0,0,0.7),
+        2px 4px 0 rgba(0,0,0,0.55),
+        4px 4px 12px rgba(60,140,220,0.6);
+    }
+    .subtitle {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #f1c40f;
+      pointer-events: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+    }
+
+    /* A: title at top */
+    #a .title    { top: 18px;  font-size: 56px; }
+    #a .subtitle { top: 88px;  font-size: 22px; }
+    /* B: title at top, more compact (vintage badge style) */
+    #b .title    { top: 22px;  font-size: 48px; color: #fff7d0; text-shadow: 0 0 10px rgba(0,0,0,0.7), 2px 3px 0 rgba(80,40,10,0.65); }
+    #b .subtitle { top: 80px;  font-size: 20px; color: #ffb56b; }
+    /* C: title at bottom (poster style) */
+    #c .title    { bottom: 70px; font-size: 60px; }
+    #c .subtitle { bottom: 36px; font-size: 22px; }
+    /* D: title at top, two-tone */
+    #d .title    { top: 22px;  font-size: 56px; }
+    #d .subtitle { top: 92px;  font-size: 20px; }
+
+    .caption {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #aaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Thumbnail mockups · in-engine renders</h1>
+  <div class="grid">
+    <div>
+      <div class="thumb" id="a">
+        <canvas></canvas>
+        <div class="title">FLIGHT SIM</div>
+        <div class="subtitle">FREE FLIGHT</div>
+      </div>
+      <div class="caption">A · F-22 banking over mountains, sunset</div>
+    </div>
+    <div>
+      <div class="thumb" id="b">
+        <canvas></canvas>
+        <div class="title">FLIGHT SIM</div>
+        <div class="subtitle">VINTAGE TO MODERN</div>
+      </div>
+      <div class="caption">B · WW1 biplane, cartograph world</div>
+    </div>
+    <div>
+      <div class="thumb" id="c">
+        <canvas></canvas>
+        <div class="title">FLIGHT SIM</div>
+        <div class="subtitle">TAKE THE SKIES</div>
+      </div>
+      <div class="caption">C · F-15 climbing into camera, poster</div>
+    </div>
+    <div>
+      <div class="thumb" id="d">
+        <canvas></canvas>
+        <div class="title">FLIGHT SIM</div>
+        <div class="subtitle">6 PLANES · OPEN SKY</div>
+      </div>
+      <div class="caption">D · Trio formation flight</div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module">
+    import { PLANES } from './lib/game/planes.js';
+
+    const SIZE = 512;
+
+    // Build a chunky low-poly mountain range mesh. Used as the backdrop for
+    // thumbnails A and B (and the fleet D). FlightSim's real terrain pipeline
+    // is too heavy to spin up four times; this is a stylized stand-in that
+    // reads the same at thumbnail size.
+    function buildMountains({ palette, ridgeCount = 12, depth = 7, spread = 80, height = 18 }) {
+      const group = new THREE.Group();
+      // One quad per ridge band, displaced.
+      for (let r = 0; r < ridgeCount; r++) {
+        const zBack = -r * 7;
+        const w = spread + r * 10;
+        // Triangle strip of mountains
+        const segs = 40;
+        const positions = [];
+        const colors = [];
+        const color = new THREE.Color(...palette[Math.min(r, palette.length - 1)]);
+        // Deterministic per-ridge "random" so screenshots are stable.
+        const seed = (r + 1) * 9301;
+        function rand(i) { return ((Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453) % 1 + 1) % 1; }
+        let prevHeight = 0;
+        for (let i = 0; i <= segs; i++) {
+          const x = -w / 2 + (i / segs) * w;
+          const h = (0.4 + 0.6 * rand(i)) * height * (0.6 + r * 0.04);
+          const yTop = h;
+          positions.push(x, yTop, zBack);
+          positions.push(x, -depth, zBack);
+          colors.push(color.r, color.g, color.b);
+          colors.push(color.r * 0.45, color.g * 0.45, color.b * 0.5);
+          prevHeight = h;
+        }
+        const indices = [];
+        for (let i = 0; i < segs; i++) {
+          const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+          indices.push(a, b, c, c, b, d);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+        const mesh = new THREE.Mesh(geo, mat);
+        group.add(mesh);
+      }
+      return group;
+    }
+
+    // Build a vertical sky gradient texture and apply as scene.background.
+    function applySkyGradient(scene, stops) {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      stops.forEach(([t, color]) => g.addColorStop(t, color));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+    }
+
+    function makeRenderer(canvas) {
+      const r = new THREE.WebGLRenderer({ canvas, antialias: true });
+      r.setPixelRatio(window.devicePixelRatio || 1);
+      r.setSize(SIZE, SIZE, false);
+      return r;
+    }
+
+    function addLights(scene, { sunDir = [60, 80, 40], sunColor = 0xfff5e0, hemiSky = 0xa8c5ff, hemiGround = 0x6a5040, sunI = 1.0, hemiI = 0.65 } = {}) {
+      const sun = new THREE.DirectionalLight(sunColor, sunI);
+      sun.position.set(...sunDir);
+      scene.add(sun);
+      const hemi = new THREE.HemisphereLight(hemiSky, hemiGround, hemiI);
+      scene.add(hemi);
+    }
+
+    // --- A. F-22 banking over mountain range, sunset ----------------------
+    function buildA(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#1a1f4a'],
+        [0.55, '#ff9560'],
+        [0.85, '#ffd28a'],
+        [1.00, '#f7ecd0'],
+      ]);
+      scene.fog = new THREE.Fog(0xffb878, 60, 220);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, 6, 24); camera.lookAt(0, 2, 0);
+
+      addLights(scene, { sunDir: [-30, 30, 60], sunColor: 0xffd28a, hemiSky: 0xffb878, hemiGround: 0x3a2a3a, sunI: 1.1 });
+
+      const mountains = buildMountains({
+        palette: [
+          [0.18, 0.12, 0.22], [0.22, 0.16, 0.26], [0.28, 0.22, 0.32],
+          [0.36, 0.28, 0.36], [0.46, 0.34, 0.42], [0.55, 0.40, 0.46],
+          [0.65, 0.46, 0.50], [0.75, 0.52, 0.54],
+        ],
+        ridgeCount: 8, height: 22, spread: 140, depth: 12,
+      });
+      mountains.position.y = -10;
+      scene.add(mountains);
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.0);
+      plane.position.set(-2, 4, 6);
+      // Banking right: rotation order matters. Heading first, then roll.
+      plane.rotation.y = Math.PI * 0.18;   // yaw toward camera-right
+      plane.rotation.z = -Math.PI * 0.42;  // bank right
+      plane.rotation.x = -Math.PI * 0.06;  // slight nose up
+      scene.add(plane);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- B. WW1 biplane over cartograph-style hills ----------------------
+    function buildB(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#5f7fa8'],
+        [0.55, '#bcd3e2'],
+        [0.85, '#f0e2c0'],
+        [1.00, '#d4c290'],
+      ]);
+      scene.fog = new THREE.Fog(0xc8b888, 40, 200);
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(6, 5, 20); camera.lookAt(0, 3, 0);
+
+      addLights(scene, { sunDir: [40, 60, 80], sunColor: 0xfff0c0, hemiSky: 0xd6e0c4, hemiGround: 0x6a5028, sunI: 0.95, hemiI: 0.55 });
+
+      // Olive/tan cartograph palette
+      const mountains = buildMountains({
+        palette: [
+          [0.55, 0.55, 0.32], [0.60, 0.58, 0.34], [0.66, 0.62, 0.38],
+          [0.72, 0.66, 0.40], [0.78, 0.72, 0.46], [0.84, 0.78, 0.52],
+          [0.88, 0.82, 0.58],
+        ],
+        ridgeCount: 9, height: 16, spread: 140, depth: 12,
+      });
+      mountains.position.y = -7;
+      scene.add(mountains);
+
+      const plane = PLANES.biplane.build(THREE);
+      plane.scale.setScalar(1.1);
+      plane.position.set(-1, 5, 6);
+      plane.rotation.y = Math.PI * 0.95;   // facing mostly away/right
+      plane.rotation.z = -Math.PI * 0.10;
+      plane.rotation.x = -Math.PI * 0.05;
+      scene.add(plane);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C. F-15 climbing into camera, sky-only poster -------------------
+    function buildC(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#0a1a3a'],
+        [0.45, '#2b66c2'],
+        [0.75, '#7fb8e8'],
+        [1.00, '#cfe6f5'],
+      ]);
+
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, 0, 22); camera.lookAt(0, 0, 0);
+
+      addLights(scene, { sunDir: [30, 60, 30], sunColor: 0xfff5e0, hemiSky: 0xb8d8ff, hemiGround: 0x405070, sunI: 1.1, hemiI: 0.6 });
+
+      // Cloud disks for depth — flat planes oriented at camera
+      const cloudGeo = new THREE.CircleGeometry(8, 16);
+      const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.65 });
+      for (let i = 0; i < 5; i++) {
+        const c = new THREE.Mesh(cloudGeo, cloudMat);
+        c.position.set(-12 + i * 6, -2 + (i % 2) * 4, -20 - i * 4);
+        c.scale.set(1 + i * 0.3, 0.5 + i * 0.1, 1);
+        scene.add(c);
+      }
+
+      const plane = PLANES.f15.build(THREE);
+      plane.scale.setScalar(1.15);
+      plane.position.set(0, -2, 4);
+      plane.rotation.x = Math.PI * 0.32;     // pitching up toward camera
+      plane.rotation.y = Math.PI;            // belly toward viewer
+      plane.rotation.z = Math.PI * 0.08;
+      scene.add(plane);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- D. Trio formation: biplane + WW2 + F-22 -------------------------
+    function buildD(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#1b2858'],
+        [0.50, '#3d77bf'],
+        [0.85, '#a4cde5'],
+        [1.00, '#dde8f0'],
+      ]);
+      scene.fog = new THREE.Fog(0x9bbedc, 50, 220);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, 4, 22); camera.lookAt(0, 2, 0);
+
+      addLights(scene, { sunDir: [40, 80, 60], sunColor: 0xfff5e0, hemiSky: 0xbad8f0, hemiGround: 0x4a6048, sunI: 1.0, hemiI: 0.6 });
+
+      // Distant terrain hint at bottom
+      const mountains = buildMountains({
+        palette: [[0.18, 0.32, 0.42], [0.30, 0.46, 0.50], [0.46, 0.60, 0.58]],
+        ridgeCount: 3, height: 8, spread: 200, depth: 8,
+      });
+      mountains.position.y = -16; mountains.position.z = -30;
+      scene.add(mountains);
+
+      // Diagonal formation: lead F-22 closer, biplane + WW2 staggered behind/above
+      const lead = PLANES.f22.build(THREE);
+      lead.scale.setScalar(0.95);
+      lead.position.set(2, 1, 6);
+      lead.rotation.y = Math.PI * 0.04;
+      lead.rotation.z = -Math.PI * 0.10;
+      scene.add(lead);
+
+      const wing1 = PLANES.ww2.build(THREE);
+      wing1.scale.setScalar(0.85);
+      wing1.position.set(-4, 4, 0);
+      wing1.rotation.y = Math.PI * 0.06;
+      wing1.rotation.z = -Math.PI * 0.10;
+      scene.add(wing1);
+
+      const wing2 = PLANES.biplane.build(THREE);
+      wing2.scale.setScalar(0.85);
+      wing2.position.set(-6, 7.2, -4);
+      wing2.rotation.y = Math.PI * 0.08;
+      wing2.rotation.z = -Math.PI * 0.08;
+      scene.add(wing2);
+
+      renderer.render(scene, camera);
+    }
+
+    function canvasFor(id) { return document.querySelector(`#${id} canvas`); }
+    buildA(canvasFor('a'));
+    buildB(canvasFor('b'));
+    buildC(canvasFor('c'));
+    buildD(canvasFor('d'));
+  </script>
+</body>
+</html>

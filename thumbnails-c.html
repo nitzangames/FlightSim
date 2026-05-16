@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Thumbnail C refinements · Flight Sim</title>
+  <style>
+    html, body { margin:0; padding:24px; background:#0e0e1a; color:#fff;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      box-sizing:border-box; min-height:100vh; }
+    h1 { margin: 0 0 18px; font-size: 22px; opacity: 0.85; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1100px;
+    }
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    }
+    .thumb canvas { display:block; width:100%; height:100%; }
+    .title {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow:
+        0 0 8px rgba(0,0,0,0.7),
+        2px 4px 0 rgba(0,0,0,0.55),
+        4px 4px 12px rgba(60,140,220,0.6);
+      bottom: 70px; font-size: 60px;
+    }
+    .subtitle {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #f1c40f;
+      pointer-events: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+      bottom: 36px; font-size: 22px;
+    }
+    .caption {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #aaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>C variants · climb into camera, poster</h1>
+  <div class="grid">
+    <div><div class="thumb" id="c1"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C1 · F-22 belly-on, vapor trails, low sun</div></div>
+    <div><div class="thumb" id="c2"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C2 · F-22 three-quarter from below, banking</div></div>
+    <div><div class="thumb" id="c3"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C3 · F-15 head-on, climbing toward viewer</div></div>
+    <div><div class="thumb" id="c4"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C4 · F-22 belly, low cloud deck below</div></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module">
+    import { PLANES } from './lib/game/planes.js';
+
+    const SIZE = 512;
+
+    function makeRenderer(canvas) {
+      const r = new THREE.WebGLRenderer({ canvas, antialias: true });
+      r.setPixelRatio(window.devicePixelRatio || 1);
+      r.setSize(SIZE, SIZE, false);
+      return r;
+    }
+
+    function applySkyGradient(scene, stops) {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      stops.forEach(([t, color]) => g.addColorStop(t, color));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+    }
+
+    function addLights(scene, { sunDir = [60, 80, 40], sunColor = 0xfff5e0, hemiSky = 0xa8c5ff, hemiGround = 0x6a5040, sunI = 1.0, hemiI = 0.65 } = {}) {
+      const sun = new THREE.DirectionalLight(sunColor, sunI);
+      sun.position.set(...sunDir);
+      scene.add(sun);
+      const hemi = new THREE.HemisphereLight(hemiSky, hemiGround, hemiI);
+      scene.add(hemi);
+    }
+
+    // Vapor trail: a cone receding behind the plane.
+    function addVaporTrail(scene, originLocal, direction, length = 18, width = 0.5) {
+      const geo = new THREE.CylinderGeometry(width * 0.15, width, length, 12, 1, true);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+      const trail = new THREE.Mesh(geo, mat);
+      // Cylinder default axis = Y; rotate to align with direction
+      trail.position.copy(originLocal);
+      // Translate along -direction by length/2 so the wide end is forward, narrow end trails away
+      const offset = direction.clone().multiplyScalar(-length / 2);
+      trail.position.add(offset);
+      // Align cylinder Y axis with -direction (so narrow end trails behind)
+      const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().negate());
+      trail.quaternion.copy(quat);
+      scene.add(trail);
+    }
+
+    // Soft cloud disks (flat) for depth
+    function addCloudDeck(scene, { y = -10, count = 6, z = -20 } = {}) {
+      const cloudGeo = new THREE.CircleGeometry(8, 16);
+      const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+      for (let i = 0; i < count; i++) {
+        const c = new THREE.Mesh(cloudGeo, cloudMat);
+        c.position.set(-14 + i * 5, y + (i % 2 === 0 ? 0 : 1.5), z - i * 3);
+        c.rotation.x = -Math.PI / 2;
+        c.scale.set(1.4 + i * 0.3, 1, 0.7 + i * 0.1);
+        scene.add(c);
+      }
+    }
+
+    // --- C1: F-22 belly-on, vapor trails, low sun -------------------------
+    function buildC1(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#08163a'],
+        [0.50, '#1d4a90'],
+        [0.85, '#ff9a55'],
+        [1.00, '#ffd28a'],
+      ]);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, -4, 22); camera.lookAt(0, 1, 0);
+
+      addLights(scene, { sunDir: [-20, -10, 20], sunColor: 0xffb060, hemiSky: 0x8fa8e0, hemiGround: 0x3a2a4a, sunI: 1.4, hemiI: 0.5 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.5);
+      plane.position.set(0, 2, 4);
+      // Looking up at belly; pitch plane to climb away from viewer.
+      plane.rotation.x = -Math.PI * 0.28;   // nose UP (negative pitch in this engine)
+      plane.rotation.y = Math.PI;           // tail toward camera, belly visible
+      plane.rotation.z = Math.PI * 0.03;
+      scene.add(plane);
+
+      // Vapor trails from each wingtip (approx positions). The F-22 in this
+      // game is a procedural mesh — wingtips are around x ≈ ±5 in plane-local.
+      // We add trails as world-space cones aligned with plane's "back" axis.
+      const planeBack = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+      addVaporTrail(scene, new THREE.Vector3(-4, 3, 4), planeBack, 22, 0.45);
+      addVaporTrail(scene, new THREE.Vector3( 4, 3, 4), planeBack, 22, 0.45);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C2: F-22 three-quarter from below, banking ----------------------
+    function buildC2(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#0a1c4a'],
+        [0.45, '#2660b8'],
+        [0.80, '#8fc5ea'],
+        [1.00, '#dde8f0'],
+      ]);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, -3, 22); camera.lookAt(0, 3, 0);
+
+      addLights(scene, { sunDir: [40, 60, 60], sunColor: 0xfff5e0, hemiSky: 0xb0d0ff, hemiGround: 0x405070, sunI: 1.1, hemiI: 0.6 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.5);
+      plane.position.set(0.5, 3, 5);
+      plane.rotation.x = -Math.PI * 0.22;
+      plane.rotation.y = Math.PI * 0.85;     // three-quarter — slight yaw off-axis
+      plane.rotation.z = -Math.PI * 0.18;    // banking
+      scene.add(plane);
+
+      const planeBack = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+      addVaporTrail(scene, new THREE.Vector3(-3.5, 4, 4.5), planeBack, 20, 0.4);
+      addVaporTrail(scene, new THREE.Vector3( 3.5, 3.5, 4), planeBack, 20, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C3: F-15 head-on, climbing toward viewer ------------------------
+    function buildC3(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#040e26'],
+        [0.40, '#0e3a78'],
+        [0.85, '#3a8acd'],
+        [1.00, '#aed8f0'],
+      ]);
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(0, 0, 18); camera.lookAt(0, 1, 0);
+
+      addLights(scene, { sunDir: [0, 30, 40], sunColor: 0xfff5e0, hemiSky: 0xa8c5e8, hemiGround: 0x405070, sunI: 1.2, hemiI: 0.5 });
+
+      const plane = PLANES.f15.build(THREE);
+      plane.scale.setScalar(1.4);
+      plane.position.set(0, -1, 6);
+      // Nose pointed at camera, climbing up out of frame.
+      plane.rotation.x = -Math.PI * 0.18;   // pitched up
+      plane.rotation.y = 0;                  // facing camera (nose toward -Z)
+      plane.rotation.z = Math.PI * 0.02;
+      scene.add(plane);
+
+      // Front-on trails: trails recede away from camera (along +Z in world after Y=0 rotation)
+      const planeBack = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+      addVaporTrail(scene, new THREE.Vector3(-3, 0, 7), planeBack, 22, 0.4);
+      addVaporTrail(scene, new THREE.Vector3( 3, 0, 7), planeBack, 22, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C4: F-22 belly, low cloud deck below ----------------------------
+    function buildC4(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#06163a'],
+        [0.50, '#1f5fb2'],
+        [0.85, '#a8d2ee'],
+        [1.00, '#e7f0f6'],
+      ]);
+      scene.fog = new THREE.Fog(0xa8d2ee, 30, 200);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, -3, 22); camera.lookAt(0, 1, 0);
+
+      addLights(scene, { sunDir: [-30, 40, 40], sunColor: 0xfff5e0, hemiSky: 0xb8d8ff, hemiGround: 0x405070, sunI: 1.1, hemiI: 0.6 });
+
+      addCloudDeck(scene, { y: -14, count: 7, z: -10 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.5);
+      plane.position.set(0, 3, 4);
+      plane.rotation.x = -Math.PI * 0.25;
+      plane.rotation.y = Math.PI;
+      plane.rotation.z = -Math.PI * 0.08;
+      scene.add(plane);
+
+      const planeBack = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+      addVaporTrail(scene, new THREE.Vector3(-4, 4, 4), planeBack, 22, 0.4);
+      addVaporTrail(scene, new THREE.Vector3( 4, 4, 4), planeBack, 22, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    const get = id => document.querySelector(`#${id} canvas`);
+    buildC1(get('c1'));
+    buildC2(get('c2'));
+    buildC3(get('c3'));
+    buildC4(get('c4'));
+  </script>
+</body>
+</html>

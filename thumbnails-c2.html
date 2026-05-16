@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Thumbnail C front-view refinements · Flight Sim</title>
+  <style>
+    html, body { margin:0; padding:24px; background:#0e0e1a; color:#fff;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      box-sizing:border-box; min-height:100vh; }
+    h1 { margin: 0 0 18px; font-size: 22px; opacity: 0.85; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      max-width: 1500px;
+    }
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    }
+    .thumb canvas { display:block; width:100%; height:100%; }
+    .title {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow:
+        0 0 8px rgba(0,0,0,0.7),
+        2px 4px 0 rgba(0,0,0,0.55),
+        4px 4px 12px rgba(60,140,220,0.6);
+      bottom: 70px; font-size: 56px;
+    }
+    .subtitle {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #f1c40f;
+      pointer-events: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+      bottom: 36px; font-size: 20px;
+    }
+    .caption {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #aaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>C variants · front of plane visible</h1>
+  <div class="grid">
+    <div><div class="thumb" id="c1f"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C1f · F-22 three-quarter front, sunset</div></div>
+    <div><div class="thumb" id="c2f"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C2f · F-22 front banking, blue sky</div></div>
+    <div><div class="thumb" id="c4f"><canvas></canvas><div class="title">FLIGHT SIM</div><div class="subtitle">TAKE THE SKIES</div></div><div class="caption">C4f · F-22 near head-on, cloud deck</div></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module">
+    import { PLANES } from './lib/game/planes.js';
+
+    const SIZE = 512;
+
+    function makeRenderer(canvas) {
+      const r = new THREE.WebGLRenderer({ canvas, antialias: true });
+      r.setPixelRatio(window.devicePixelRatio || 1);
+      r.setSize(SIZE, SIZE, false);
+      return r;
+    }
+
+    function applySkyGradient(scene, stops) {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      stops.forEach(([t, color]) => g.addColorStop(t, color));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+    }
+
+    function addLights(scene, { sunDir, sunColor = 0xfff5e0, hemiSky = 0xa8c5ff, hemiGround = 0x6a5040, sunI = 1.0, hemiI = 0.65 } = {}) {
+      const sun = new THREE.DirectionalLight(sunColor, sunI);
+      sun.position.set(...sunDir);
+      scene.add(sun);
+      const hemi = new THREE.HemisphereLight(hemiSky, hemiGround, hemiI);
+      scene.add(hemi);
+    }
+
+    // Vapor trail receding away from camera. Anchor is world-space position
+    // (typically on the plane); direction is the world-space direction the
+    // trail extends (toward the back of the plane).
+    function addVaporTrail(scene, anchor, direction, length = 22, width = 0.45) {
+      const geo = new THREE.CylinderGeometry(width * 0.15, width, length, 12, 1, true);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+      const trail = new THREE.Mesh(geo, mat);
+      const offset = direction.clone().multiplyScalar(length / 2);
+      trail.position.copy(anchor).add(offset);
+      const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone());
+      trail.quaternion.copy(quat);
+      scene.add(trail);
+    }
+
+    function addCloudDeck(scene, { y = -12, count = 7, z = -10 } = {}) {
+      const cloudGeo = new THREE.CircleGeometry(8, 16);
+      const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+      for (let i = 0; i < count; i++) {
+        const c = new THREE.Mesh(cloudGeo, cloudMat);
+        c.position.set(-14 + i * 5, y + (i % 2 === 0 ? 0 : 1.5), z - i * 3);
+        c.rotation.x = -Math.PI / 2;
+        c.scale.set(1.4 + i * 0.3, 1, 0.7 + i * 0.1);
+        scene.add(c);
+      }
+    }
+
+    // For each variant: plane "forward" in local space is -Z. Camera sits at
+    // +Z looking at the origin. So:
+    //  • rotation.y =   0    → nose points to -Z (away from camera) — see TAIL.
+    //  • rotation.y =   π    → nose points to +Z (toward camera) — see NOSE.
+    //  • rotation.y = ~0.75π → 3/4 view from front-right; we see nose + right side.
+    // We use rotation.y in the 0.70π–π range to keep the nose pointed roughly at camera.
+
+    // --- C1f: F-22 three-quarter front, sunset ----------------------------
+    function buildC1f(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#08163a'],
+        [0.50, '#1d4a90'],
+        [0.85, '#ff9a55'],
+        [1.00, '#ffd28a'],
+      ]);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, 2, 22); camera.lookAt(0, 2, 0);
+
+      addLights(scene, { sunDir: [-30, 20, 40], sunColor: 0xffc080, hemiSky: 0xc89878, hemiGround: 0x4a3050, sunI: 1.2, hemiI: 0.5 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.6);
+      plane.position.set(0, 2, 4);
+      // Three-quarter from front: turn the plane so the camera sees nose + right side.
+      plane.rotation.y = Math.PI * 0.78;
+      plane.rotation.x = -Math.PI * 0.10;
+      plane.rotation.z = -Math.PI * 0.18;   // banking right
+      scene.add(plane);
+
+      // Trails recede AWAY from camera (since plane is mostly facing camera).
+      // The plane's back direction in world space is plane.forward reversed:
+      // plane local -Z transformed; back = +Z in local. Compute world back.
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion).normalize();
+      addVaporTrail(scene, new THREE.Vector3(2, 2.7, 3), back, 20, 0.4);
+      addVaporTrail(scene, new THREE.Vector3(-1.5, 2.3, 3), back, 20, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C2f: F-22 banking, three-quarter front, blue sky -----------------
+    function buildC2f(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#0a1c4a'],
+        [0.45, '#2660b8'],
+        [0.80, '#8fc5ea'],
+        [1.00, '#dde8f0'],
+      ]);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+      camera.position.set(0, 0, 22); camera.lookAt(0, 1, 0);
+
+      addLights(scene, { sunDir: [40, 50, 60], sunColor: 0xfff5e0, hemiSky: 0xb0d0ff, hemiGround: 0x405070, sunI: 1.1, hemiI: 0.55 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.6);
+      plane.position.set(0.5, 1, 4);
+      // More aggressive bank, more 3/4 view
+      plane.rotation.y = Math.PI * 0.70;
+      plane.rotation.x = -Math.PI * 0.05;
+      plane.rotation.z = -Math.PI * 0.32;
+      scene.add(plane);
+
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion).normalize();
+      addVaporTrail(scene, new THREE.Vector3(2, 2, 3), back, 22, 0.4);
+      addVaporTrail(scene, new THREE.Vector3(-2, 0, 3), back, 22, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    // --- C4f: F-22 near head-on with cloud deck ---------------------------
+    function buildC4f(canvas) {
+      const renderer = makeRenderer(canvas);
+      const scene = new THREE.Scene();
+      applySkyGradient(scene, [
+        [0.00, '#06163a'],
+        [0.50, '#1f5fb2'],
+        [0.85, '#a8d2ee'],
+        [1.00, '#e7f0f6'],
+      ]);
+      scene.fog = new THREE.Fog(0xa8d2ee, 30, 220);
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+      camera.position.set(0, 1, 22); camera.lookAt(0, 2, 0);
+
+      addLights(scene, { sunDir: [10, 50, 40], sunColor: 0xfff5e0, hemiSky: 0xb8d8ff, hemiGround: 0x405070, sunI: 1.1, hemiI: 0.55 });
+
+      addCloudDeck(scene, { y: -10, count: 7, z: -12 });
+
+      const plane = PLANES.f22.build(THREE);
+      plane.scale.setScalar(1.5);
+      plane.position.set(0, 2, 4);
+      // Near head-on, very slight angle and bank for life
+      plane.rotation.y = Math.PI * 0.93;
+      plane.rotation.x = -Math.PI * 0.06;
+      plane.rotation.z = -Math.PI * 0.10;
+      scene.add(plane);
+
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion).normalize();
+      addVaporTrail(scene, new THREE.Vector3(2, 2, 3), back, 22, 0.4);
+      addVaporTrail(scene, new THREE.Vector3(-2, 2, 3), back, 22, 0.4);
+
+      renderer.render(scene, camera);
+    }
+
+    const get = id => document.querySelector(`#${id} canvas`);
+    buildC1f(get('c1f'));
+    buildC2f(get('c2f'));
+    buildC4f(get('c4f'));
+  </script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Flight Sim thumbnail · final 512</title>
+  <style>
+    html, body { margin:0; padding:0; background:#000; }
+    #thumb {
+      position: relative;
+      width: 512px; height: 512px;
+      overflow: hidden;
+    }
+    #thumb canvas { display:block; width:512px; height:512px; }
+    .title {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow:
+        0 0 8px rgba(0,0,0,0.7),
+        2px 4px 0 rgba(0,0,0,0.55),
+        4px 4px 12px rgba(60,140,220,0.6);
+      bottom: 70px; font-size: 56px;
+    }
+    .subtitle {
+      position: absolute;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #f1c40f;
+      pointer-events: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+      bottom: 36px; font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="thumb">
+    <canvas></canvas>
+    <div class="title">FLIGHT SIM</div>
+    <div class="subtitle">TAKE THE SKIES</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module">
+    import { PLANES } from './lib/game/planes.js';
+
+    const SIZE = 512;
+    const canvas = document.querySelector('#thumb canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setSize(SIZE, SIZE, false);
+
+    const scene = new THREE.Scene();
+    // Sky gradient (matches C4f)
+    (() => {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      [
+        [0.00, '#06163a'],
+        [0.50, '#1f5fb2'],
+        [0.85, '#a8d2ee'],
+        [1.00, '#e7f0f6'],
+      ].forEach(([t, color]) => g.addColorStop(t, color));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+    })();
+    scene.fog = new THREE.Fog(0xa8d2ee, 30, 220);
+
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+    camera.position.set(0, 1, 22); camera.lookAt(0, 2, 0);
+
+    const sun = new THREE.DirectionalLight(0xfff5e0, 1.1);
+    sun.position.set(10, 50, 40);
+    scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0xb8d8ff, 0x405070, 0.55));
+
+    // Cloud deck
+    const cloudGeo = new THREE.CircleGeometry(8, 16);
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+    for (let i = 0; i < 7; i++) {
+      const c = new THREE.Mesh(cloudGeo, cloudMat);
+      c.position.set(-14 + i * 5, -10 + (i % 2 === 0 ? 0 : 1.5), -12 - i * 3);
+      c.rotation.x = -Math.PI / 2;
+      c.scale.set(1.4 + i * 0.3, 1, 0.7 + i * 0.1);
+      scene.add(c);
+    }
+
+    const plane = PLANES.f22.build(THREE);
+    plane.scale.setScalar(1.5);
+    plane.position.set(0, 2, 4);
+    plane.rotation.y = Math.PI * 0.93;
+    plane.rotation.x = -Math.PI * 0.06;
+    plane.rotation.z = -Math.PI * 0.10;
+    scene.add(plane);
+
+    // Vapor trails behind plane
+    const back = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion).normalize();
+    function addTrail(anchor) {
+      const length = 22, width = 0.4;
+      const geo = new THREE.CylinderGeometry(width * 0.15, width, length, 12, 1, true);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+      const trail = new THREE.Mesh(geo, mat);
+      const offset = back.clone().multiplyScalar(length / 2);
+      trail.position.copy(anchor).add(offset);
+      const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), back.clone());
+      trail.quaternion.copy(quat);
+      scene.add(trail);
+    }
+    addTrail(new THREE.Vector3(2, 2, 3));
+    addTrail(new THREE.Vector3(-2, 2, 3));
+
+    renderer.render(scene, camera);
+    // Signal capture readiness
+    window.__thumbReady = true;
+  </script>
+</body>
+</html>
