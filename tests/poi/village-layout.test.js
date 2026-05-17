@@ -3,7 +3,7 @@ import { layoutVillage } from '../../lib/poi/village-layout.js';
 
 const baseVillage = (over = {}) => ({
   id: 0, x: 5000, z: 5000, groundY: 30,
-  sizeTier: 'M', padRadius: 35, falloffRadius: 60,
+  sizeTier: 'M', padRadius: 90, falloffRadius: 140,
   paletteSeed: 0.4, templateKey: 'forest',
   ...over,
 });
@@ -18,7 +18,7 @@ describe('layoutVillage', () => {
   });
 
   it('S tier yields 4–5 buildings + maybe a barn (max 6)', () => {
-    const v = baseVillage({ sizeTier: 'S', padRadius: 25, falloffRadius: 50 });
+    const v = baseVillage({ sizeTier: 'S', padRadius: 60, falloffRadius: 110 });
     const out = layoutVillage(v);
     expect(out.length).toBeGreaterThanOrEqual(4);
     expect(out.length).toBeLessThanOrEqual(6);
@@ -35,7 +35,7 @@ describe('layoutVillage', () => {
   });
 
   it('L tier yields houses + barn + windmill + church (≥11, ≤18 total)', () => {
-    const v = baseVillage({ sizeTier: 'L', padRadius: 50, falloffRadius: 75 });
+    const v = baseVillage({ sizeTier: 'L', padRadius: 130, falloffRadius: 180 });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
