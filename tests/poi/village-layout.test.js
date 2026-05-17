@@ -3,7 +3,7 @@ import { layoutVillage } from '../../lib/poi/village-layout.js';
 
 const baseVillage = (over = {}) => ({
   id: 0, x: 5000, z: 5000, groundY: 30,
-  sizeTier: 'M', padRadius: 90, falloffRadius: 140,
+  sizeTier: 'M', padRadius: 140, falloffRadius: 190,
   paletteSeed: 0.4, templateKey: 'forest',
   ...over,
 });
@@ -17,36 +17,32 @@ describe('layoutVillage', () => {
     expect(a[0]).toEqual(b[0]);
   });
 
-  it('S tier yields 4–5 buildings + maybe a barn (max 6)', () => {
-    const v = baseVillage({ sizeTier: 'S', padRadius: 60, falloffRadius: 110 });
+  it('S tier yields ~10–14 houses + maybe a barn', () => {
+    const v = baseVillage({ sizeTier: 'S', padRadius: 90, falloffRadius: 140 });
     const out = layoutVillage(v);
-    expect(out.length).toBeGreaterThanOrEqual(4);
-    expect(out.length).toBeLessThanOrEqual(6);
+    expect(out.length).toBeGreaterThanOrEqual(10);
+    expect(out.length).toBeLessThanOrEqual(15);
   });
 
-  it('M tier yields 7–9 houses + barn + windmill', () => {
+  it('M tier yields ~20–26 houses + barn + windmill', () => {
     const v = baseVillage({ sizeTier: 'M' });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
     expect(types).toContain('windmill');
-    expect(out.length).toBeGreaterThanOrEqual(9);
-    expect(out.length).toBeLessThanOrEqual(11);
+    expect(out.length).toBeGreaterThanOrEqual(20);
+    expect(out.length).toBeLessThanOrEqual(28);
   });
 
-  it('L tier yields houses + barn + windmill + church (≥11, ≤18 total)', () => {
-    const v = baseVillage({ sizeTier: 'L', padRadius: 130, falloffRadius: 180 });
+  it('L tier yields houses + barn + windmill + church (≥32, ≤46 total)', () => {
+    const v = baseVillage({ sizeTier: 'L', padRadius: 210, falloffRadius: 260 });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
     expect(types).toContain('windmill');
     expect(types).toContain('church');
-    // Implementer's algorithm yields 12–16 across 100 seeds. Tighten the
-    // lower bound to 12 so a regression (e.g. windmill dropped silently)
-    // can't slip past — the type checks above already guard which
-    // specials must be present.
-    expect(out.length).toBeGreaterThanOrEqual(12);
-    expect(out.length).toBeLessThanOrEqual(17);
+    expect(out.length).toBeGreaterThanOrEqual(32);
+    expect(out.length).toBeLessThanOrEqual(46);
   });
 
   it('all buildings sit on ground at village.groundY', () => {

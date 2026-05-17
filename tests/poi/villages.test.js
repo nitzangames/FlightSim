@@ -30,7 +30,7 @@ describe('buildVillageRegistry', () => {
     expect(r.length).toBeGreaterThan(20);
     for (const v of r) {
       expect(['S', 'M', 'L']).toContain(v.sizeTier);
-      expect([60, 90, 130]).toContain(v.padRadius);
+      expect([90, 140, 210]).toContain(v.padRadius);
       expect(v.falloffRadius).toBe(v.padRadius + 50);
       expect(v.groundY).toBe(30);
       expect(v.templateKey).toBe('forest');
