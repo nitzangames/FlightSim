@@ -174,6 +174,28 @@ function clearUI() { if (activeUI) { activeUI.dispose(); activeUI = null; } }
 // Countdown so terrain finishes any tail-end streaming before plane moves
 let flyingCountdown = 0;
 
+// HUD nav helper: nearest village direction relative to plane heading.
+// Returns { villageBearing, villageDistance } where bearing is radians from
+// straight-ahead (0 = ahead, +π/2 = right, -π/2 = left). Empty object when
+// the registry has no villages so the HUD hides the marker.
+function computeVillageNav(terrain, physics) {
+  if (!terrain.nearestVillage) return {};
+  const nv = terrain.nearestVillage(physics.x, physics.z);
+  if (!nv) return {};
+  const dx = nv.x - physics.x;
+  const dz = nv.z - physics.z;
+  // World bearing convention: 0 when target is along the plane's spawn-forward
+  // axis (−Z). atan2(dx, −dz) maps +X to +π/2 so a village on the right reads
+  // as a +π/2 rotation, which matches CSS rotate() (CW positive).
+  const villageWorldBearing = Math.atan2(dx, -dz);
+  const planeHeading = Math.atan2(physics.forward.x, -physics.forward.z);
+  let bearing = villageWorldBearing - planeHeading;
+  // Normalize to (-π, π]
+  while (bearing > Math.PI)  bearing -= 2 * Math.PI;
+  while (bearing <= -Math.PI) bearing += 2 * Math.PI;
+  return { villageBearing: bearing, villageDistance: nv.distance };
+}
+
 // --- State machine ---
 const sm = new StateMachine({
   initial: 'MENU',
@@ -241,7 +263,8 @@ const sm = new StateMachine({
           terrain.update(worldCam.position);
           applyBiome(physics.x, physics.z);
           const alt = physics.y - terrain.getHeight(physics.x, physics.z);
-          activeUI.update({ speed: 0, altitude: alt, countdown: flyingCountdown });
+          const vNav = computeVillageNav(terrain, physics);
+          activeUI.update({ speed: 0, altitude: alt, countdown: flyingCountdown, ...vNav });
           return;
         }
         physics.update({ ...input.read(), dt });
@@ -255,7 +278,8 @@ const sm = new StateMachine({
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
-        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown });
+        const vNav = computeVillageNav(terrain, physics);
+        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown, ...vNav });
         flyingCountdown -= dt;
         if (crashed(physics, terrain, physics.cfg.collisionRadius * WORLD_PLANE_SCALE)) {
           sm.setState('CRASH');
