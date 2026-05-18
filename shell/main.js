@@ -126,6 +126,25 @@ function applyBiome(planeX, planeZ) {
 const WORLD_PLANE_SCALE = 0.25;
 
 let worldPlaneMesh = null;
+
+// --- Ground shadow ---
+// Simple dark disk projected straight down to terrain height. Always
+// horizontal (does not roll/pitch with the plane), sized to cover the
+// largest in-flight plane silhouette. Fades with altitude so a high-flying
+// plane has no visible shadow.
+const SHADOW_RADIUS = 4.0;
+const SHADOW_FADE_LOW  = 5;     // below this altitude (m AGL): full opacity
+const SHADOW_FADE_HIGH = 250;   // above this: invisible
+const shadowGeom = new THREE.CircleGeometry(SHADOW_RADIUS, 24);
+shadowGeom.rotateX(-Math.PI / 2);  // lie flat on XZ plane
+const shadowMat = new THREE.MeshBasicMaterial({
+  color: 0x000000, transparent: true, opacity: 0.4,
+  depthWrite: false,
+});
+const planeShadow = new THREE.Mesh(shadowGeom, shadowMat);
+planeShadow.renderOrder = 1;
+worldScene.add(planeShadow);
+
 function setWorldPlane(key) {
   if (worldPlaneMesh) {
     worldPlaneMesh.traverse((n) => {
@@ -173,6 +192,22 @@ function clearUI() { if (activeUI) { activeUI.dispose(); activeUI = null; } }
 
 // Countdown so terrain finishes any tail-end streaming before plane moves
 let flyingCountdown = 0;
+
+// Update the ground shadow to sit at terrain height directly below the
+// plane, fading with altitude. Called every flight frame.
+function updatePlaneShadow() {
+  const groundY = terrain.getHeight(physics.x, physics.z);
+  planeShadow.position.set(physics.x, groundY + 0.2, physics.z);
+  const alt = physics.y - groundY;
+  // Linear fade from full opacity at low altitude to zero at SHADOW_FADE_HIGH.
+  let a = 1;
+  if (alt > SHADOW_FADE_LOW) {
+    a = 1 - (alt - SHADOW_FADE_LOW) / (SHADOW_FADE_HIGH - SHADOW_FADE_LOW);
+    if (a < 0) a = 0;
+  }
+  planeShadow.material.opacity = 0.45 * a;
+  planeShadow.visible = a > 0.01;
+}
 
 // HUD nav helper: nearest village direction relative to plane heading.
 // Returns { villageBearing, villageDistance } where bearing is radians from
@@ -262,6 +297,7 @@ const sm = new StateMachine({
           chase.update(physics, 0);
           terrain.update(worldCam.position);
           applyBiome(physics.x, physics.z);
+          updatePlaneShadow();
           const alt = physics.y - terrain.getHeight(physics.x, physics.z);
           const vNav = computeVillageNav(terrain, physics);
           activeUI.update({ speed: 0, altitude: alt, countdown: flyingCountdown, ...vNav });
@@ -275,6 +311,7 @@ const sm = new StateMachine({
         chase.update(physics, dt);
         terrain.update(worldCam.position);
         applyBiome(physics.x, physics.z);
+        updatePlaneShadow();
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
