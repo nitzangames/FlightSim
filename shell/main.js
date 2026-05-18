@@ -123,7 +123,7 @@ function applyBiome(planeX, planeZ) {
 // 7.4m wingspan etc.) for the menu turntable, but in-world they're scaled
 // down so they read as a small craft against the big terrain. Collision
 // radius is scaled with the mesh so crashes line up with what's drawn.
-const WORLD_PLANE_SCALE = 0.25;
+const WORLD_PLANE_SCALE = 0.875;   // 3.5× the previous 0.25 — larger, more readable plane in the world
 
 let worldPlaneMesh = null;
 
@@ -132,7 +132,7 @@ let worldPlaneMesh = null;
 // horizontal (does not roll/pitch with the plane), sized to cover the
 // largest in-flight plane silhouette. Fades with altitude so a high-flying
 // plane has no visible shadow.
-const SHADOW_RADIUS = 4.0;
+const SHADOW_RADIUS = 14.0;   // covers the largest plane wingspan at WORLD_PLANE_SCALE=0.875
 const SHADOW_FADE_LOW  = 5;     // below this altitude (m AGL): full opacity
 const SHADOW_FADE_HIGH = 250;   // above this: invisible
 const shadowGeom = new THREE.CircleGeometry(SHADOW_RADIUS, 24);
