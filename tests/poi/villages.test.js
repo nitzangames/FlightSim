@@ -15,13 +15,14 @@ describe('buildVillageRegistry', () => {
     expect(a[0]).toEqual(b[0]);
   });
 
-  it('produces fewer villages when no forest biome', () => {
-    const r = buildVillageRegistry({ ...opts, biomeAt: () => ({ key: 'desert' }) }).all;
+  it('produces zero villages when no template matches the biome', () => {
+    const r = buildVillageRegistry({ ...opts, biomeAt: () => ({ key: 'mystery' }) }).all;
     expect(r.length).toBe(0);
   });
 
-  it('produces fewer villages when terrain out of altitude band', () => {
-    const r = buildVillageRegistry({ ...opts, terrainHeightFn: () => 200 }).all;
+  it('produces zero villages when terrain is above every template\'s altitude band', () => {
+    // All templates currently cap at 250 m (arctic); 400 m exceeds all of them.
+    const r = buildVillageRegistry({ ...opts, terrainHeightFn: () => 400 }).all;
     expect(r.length).toBe(0);
   });
 
