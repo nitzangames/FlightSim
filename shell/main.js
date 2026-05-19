@@ -316,7 +316,7 @@ const sm = new StateMachine({
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
         const vNav = computeVillageNav(terrain, physics);
-        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown, ...vNav });
+        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown, stalling: physics.stalling, ...vNav });
         flyingCountdown -= dt;
         if (crashed(physics, terrain, physics.cfg.collisionRadius * WORLD_PLANE_SCALE)) {
           sm.setState('CRASH');
