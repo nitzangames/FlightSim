@@ -312,11 +312,22 @@ const sm = new StateMachine({
         terrain.update(worldCam.position);
         applyBiome(physics.x, physics.z);
         updatePlaneShadow();
+        if (terrain.markers) terrain.markers.update(physics, dt);
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
         const vNav = computeVillageNav(terrain, physics);
-        activeUI.update({ speed: physics.speed, altitude: alt, countdown: flyingCountdown, stalling: physics.stalling, ...vNav });
+        const flash = terrain.markers ? terrain.markers.consumeFlash() : null;
+        activeUI.update({
+          speed: physics.speed,
+          altitude: alt,
+          countdown: flyingCountdown,
+          stalling: physics.stalling,
+          visitedCount: terrain.markers ? terrain.markers.visitedCount : 0,
+          visitedTotal: terrain.markers ? terrain.markers.total : 0,
+          flashT: flash ? flash.t : 0,
+          ...vNav,
+        });
         flyingCountdown -= dt;
         if (crashed(physics, terrain, physics.cfg.collisionRadius * WORLD_PLANE_SCALE)) {
           sm.setState('CRASH');
