@@ -3,7 +3,7 @@ import { layoutVillage } from '../../lib/poi/village-layout.js';
 
 const baseVillage = (over = {}) => ({
   id: 0, x: 5000, z: 5000, groundY: 30,
-  sizeTier: 'M', padRadius: 200, falloffRadius: 250,
+  sizeTier: 'M', padRadius: 110, falloffRadius: 160,
   paletteSeed: 0.4, templateKey: 'forest',
   ...over,
 });
@@ -18,7 +18,7 @@ describe('layoutVillage', () => {
   });
 
   it('S tier yields ~20–28 houses + maybe a barn', () => {
-    const v = baseVillage({ sizeTier: 'S', padRadius: 130, falloffRadius: 180 });
+    const v = baseVillage({ sizeTier: 'S', padRadius: 75, falloffRadius: 125 });
     const out = layoutVillage(v);
     expect(out.length).toBeGreaterThanOrEqual(20);
     expect(out.length).toBeLessThanOrEqual(30);
@@ -35,7 +35,7 @@ describe('layoutVillage', () => {
   });
 
   it('L tier yields houses + barn + windmill + church (≥64, ≤92 total)', () => {
-    const v = baseVillage({ sizeTier: 'L', padRadius: 300, falloffRadius: 350 });
+    const v = baseVillage({ sizeTier: 'L', padRadius: 160, falloffRadius: 210 });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
@@ -48,7 +48,10 @@ describe('layoutVillage', () => {
   it('all buildings sit on ground at village.groundY', () => {
     const v = baseVillage({ groundY: 42 });
     const out = layoutVillage(v);
-    for (const b of out) expect(b.y).toBe(42);
+    for (const b of out) {
+      if (b.type === 'road') continue;   // roads lift 0.05 m to avoid z-fighting
+      expect(b.y).toBe(42);
+    }
   });
 
   it('all building origins are within padRadius of anchor', () => {
