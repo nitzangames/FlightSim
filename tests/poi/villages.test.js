@@ -31,7 +31,8 @@ describe('buildVillageRegistry', () => {
     expect(r.length).toBeGreaterThan(20);
     for (const v of r) {
       expect(['S', 'M', 'L']).toContain(v.sizeTier);
-      expect([90, 140, 210]).toContain(v.padRadius);
+      // Forest pad radii (other templates have different values; fixture uses all-forest biome)
+      expect([130, 200, 300]).toContain(v.padRadius);
       expect(v.falloffRadius).toBe(v.padRadius + 50);
       expect(v.groundY).toBe(30);
       expect(v.templateKey).toBe('forest');

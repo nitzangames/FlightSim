@@ -3,7 +3,7 @@ import { layoutVillage } from '../../lib/poi/village-layout.js';
 
 const baseVillage = (over = {}) => ({
   id: 0, x: 5000, z: 5000, groundY: 30,
-  sizeTier: 'M', padRadius: 140, falloffRadius: 190,
+  sizeTier: 'M', padRadius: 200, falloffRadius: 250,
   paletteSeed: 0.4, templateKey: 'forest',
   ...over,
 });
@@ -17,32 +17,32 @@ describe('layoutVillage', () => {
     expect(a[0]).toEqual(b[0]);
   });
 
-  it('S tier yields ~10–14 houses + maybe a barn', () => {
-    const v = baseVillage({ sizeTier: 'S', padRadius: 90, falloffRadius: 140 });
+  it('S tier yields ~20–28 houses + maybe a barn', () => {
+    const v = baseVillage({ sizeTier: 'S', padRadius: 130, falloffRadius: 180 });
     const out = layoutVillage(v);
-    expect(out.length).toBeGreaterThanOrEqual(10);
-    expect(out.length).toBeLessThanOrEqual(15);
+    expect(out.length).toBeGreaterThanOrEqual(20);
+    expect(out.length).toBeLessThanOrEqual(30);
   });
 
-  it('M tier yields ~20–26 houses + barn + windmill', () => {
+  it('M tier yields ~40–52 houses + barn + windmill', () => {
     const v = baseVillage({ sizeTier: 'M' });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
     expect(types).toContain('windmill');
-    expect(out.length).toBeGreaterThanOrEqual(20);
-    expect(out.length).toBeLessThanOrEqual(28);
+    expect(out.length).toBeGreaterThanOrEqual(40);
+    expect(out.length).toBeLessThanOrEqual(55);
   });
 
-  it('L tier yields houses + barn + windmill + church (≥32, ≤46 total)', () => {
-    const v = baseVillage({ sizeTier: 'L', padRadius: 210, falloffRadius: 260 });
+  it('L tier yields houses + barn + windmill + church (≥64, ≤92 total)', () => {
+    const v = baseVillage({ sizeTier: 'L', padRadius: 300, falloffRadius: 350 });
     const out = layoutVillage(v);
     const types = out.map(b => b.type);
     expect(types).toContain('barn');
     expect(types).toContain('windmill');
     expect(types).toContain('church');
-    expect(out.length).toBeGreaterThanOrEqual(32);
-    expect(out.length).toBeLessThanOrEqual(46);
+    expect(out.length).toBeGreaterThanOrEqual(64);
+    expect(out.length).toBeLessThanOrEqual(92);
   });
 
   it('all buildings sit on ground at village.groundY', () => {
