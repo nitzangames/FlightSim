@@ -49,7 +49,7 @@ describe('layoutVillage', () => {
     const v = baseVillage({ groundY: 42 });
     const out = layoutVillage(v);
     for (const b of out) {
-      if (b.type === 'road') continue;   // roads lift 0.05 m to avoid z-fighting
+      if (b.type === 'runway') continue;   // runway lifts 0.05 m to avoid z-fighting
       expect(b.y).toBe(42);
     }
   });
