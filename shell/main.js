@@ -37,6 +37,17 @@ const seed = readOrMintSeed();
 let currentPlane = localStorage.getItem(LS_PLANE) || 'biplane';
 const currentStyle = 'cartograph';
 
+// Loading-screen helpers: setBootPhase updates the small grey caption under
+// the spinner; yieldPaint waits for two animation frames so the browser
+// actually paints the new caption before the next synchronous-heavy phase
+// blocks the thread. Top-level await is fine inside a <script type="module">.
+const bootPhaseEl = boot && boot.querySelector('.boot-phase');
+function setBootPhase(text) { if (bootPhaseEl) bootPhaseEl.textContent = text; }
+const yieldPaint = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+setBootPhase('Generating world…');
+await yieldPaint();
+
 // --- Renderer (one, shared between scenes) ---
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !navigator.userAgent.match(/iPhone|Android|iPad/) });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -364,6 +375,8 @@ function frame() {
   if (!bootHidden) { bootHidden = true; boot.classList.add('hidden'); setTimeout(() => boot.remove(), 600); }
   raf = requestAnimationFrame(frame);
 }
+setBootPhase('Starting…');
+await yieldPaint();
 sm.start();
 raf = requestAnimationFrame(frame);
 

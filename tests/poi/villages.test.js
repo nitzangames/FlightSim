@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { buildVillageRegistry, WORLD_SIZE, CELL_SIZE } from '../../lib/poi/villages.js';
 
-// Fake forest-everywhere biome + flat-30m terrain + no rivers.
+// Fake forest-everywhere biome + flat ~60m terrain + no rivers.
+// 60 m sits inside the forest template's altitudeRange [10, 80] but above
+// the town template's [10, 50] — keeps these tests forest-only without
+// having to special-case town placement.
 const allForest = () => ({ key: 'forest' });
-const flatTerrain = () => 30;
+const flatTerrain = () => 60;
 const noRivers = () => 0;
 const opts = { seed: 42, biomeAt: allForest, terrainHeightFn: flatTerrain, riverDepthAtFn: noRivers };
 
@@ -34,7 +37,7 @@ describe('buildVillageRegistry', () => {
       // Forest pad radii (other templates have different values; fixture uses all-forest biome)
       expect([75, 110, 160]).toContain(v.padRadius);
       expect(v.falloffRadius).toBe(v.padRadius + 50);
-      expect(v.groundY).toBe(30);
+      expect(v.groundY).toBe(60);
       expect(v.templateKey).toBe('forest');
     }
   });
