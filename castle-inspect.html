@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Castle Inspect</title>
+  <style>
+    html, body { margin:0; padding:0; background:#11161e; color:#cfd8e0; font:13px ui-monospace,monospace; }
+    .row { display:flex; gap:8px; padding:8px; }
+    .v { flex:1; background:#0a0e14; border:1px solid #1f2530; }
+    .v canvas { display:block; width:100%; aspect-ratio:1/1; }
+    .v .lbl { padding:4px 8px; font-size:12px; color:#8896aa; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="row">
+  <div class="v"><canvas id="cv-top"></canvas><div class="lbl">TOP (looking straight down)</div></div>
+  <div class="v"><canvas id="cv-iso"></canvas><div class="lbl">ISO (front-right)</div></div>
+  <div class="v"><canvas id="cv-side"></canvas><div class="lbl">SIDE (looking along +X)</div></div>
+</div>
+<script type="module">
+import { layoutVillage } from './lib/poi/village-layout.js';
+import {
+  buildCastleKeepGeometry, buildCastleTowerGeometry, buildCastleWallGeometry, buildHouseGeometry,
+} from './lib/poi/buildings.js';
+
+// Construct a fake village record for the castle, exactly as villages.js
+// would emit at registry time.
+const village = {
+  id: 0,
+  x: 0, z: 0,
+  groundY: 0,
+  sizeTier: 'S',
+  padRadius: 70,
+  falloffRadius: 100,
+  paletteSeed: 0.123,
+  templateKey: 'castle',
+};
+
+// Build the layout — same code path the chunk pipeline uses.
+const buildings = layoutVillage(village);
+
+// Per-type geometry. Material is a simple lambert with two custom colour
+// attributes so the chunk shader trick of per-instance wall/roof colour
+// just becomes one-colour-per-mesh here. Cheap.
+const geoms = {
+  castle_keep:   buildCastleKeepGeometry(THREE),
+  castle_tower:  buildCastleTowerGeometry(THREE),
+  castle_wall:   buildCastleWallGeometry(THREE),
+  castle_chapel: buildHouseGeometry(THREE),
+};
+
+function makeView(canvasId, camPos, camLookAt = [0, 0, 0], ortho = false) {
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(2);
+  renderer.setSize(canvas.clientWidth || 600, canvas.clientWidth || 600, false);
+  renderer.setClearColor(0x0a0e14);
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x202428, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(40, 80, 60);
+  scene.add(sun);
+
+  // Ground reference plane so it's obvious where Y=0 is.
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(160, 160),
+    new THREE.MeshBasicMaterial({ color: 0x1a2230, transparent: true, opacity: 0.35 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  scene.add(ground);
+
+  // Axis helper to show world orientation (X=red, Y=green, Z=blue).
+  const axes = new THREE.AxesHelper(40);
+  scene.add(axes);
+
+  // Materials per building type — match the colours roughly.
+  const matFor = (type) => {
+    if (type === 'castle_keep')   return new THREE.MeshLambertMaterial({ color: 0x9a9a96 });
+    if (type === 'castle_tower')  return new THREE.MeshLambertMaterial({ color: 0x8e8c84 });
+    if (type === 'castle_wall')   return new THREE.MeshLambertMaterial({ color: 0xb0aea4 });
+    if (type === 'castle_chapel') return new THREE.MeshLambertMaterial({ color: 0xa49a8a });
+    return new THREE.MeshLambertMaterial({ color: 0xffffff });
+  };
+
+  // Emit each building instance the way ChunkManager would.
+  for (const b of buildings) {
+    const g = geoms[b.type];
+    if (!g) continue;
+    const mesh = new THREE.Mesh(g, matFor(b.type));
+    mesh.position.set(b.x, b.y, b.z);
+    // Three's Euler default order 'XYZ' is fine here since we only set Y.
+    mesh.rotation.y = b.rotY;
+    mesh.scale.set(b.scaleX, b.scaleY, b.scaleZ);
+    scene.add(mesh);
+  }
+
+  const cam = ortho
+    ? new THREE.OrthographicCamera(-60, 60, 60, -60, 0.1, 500)
+    : new THREE.PerspectiveCamera(38, 1, 0.1, 500);
+  cam.position.set(...camPos);
+  cam.lookAt(...camLookAt);
+  renderer.render(scene, cam);
+}
+
+makeView('cv-top',  [0, 120, 0.0001], [0, 0, 0], true);   // top-down ortho
+makeView('cv-iso',  [70, 55, 70],     [0, 10, 0]);         // iso
+makeView('cv-side', [120, 12, 0],     [0, 10, 0]);         // side (along +X looking -X)
+
+// Log the layout to the console so any inspection can see what
+// layoutVillage emitted.
+console.log('castle layout:', buildings);
+</script>
+</body>
+</html>

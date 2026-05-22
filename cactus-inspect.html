@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Cactus Inspect</title>
+  <style>
+    html, body { margin:0; padding:0; background:#c4a060; color:#3a2a18; font:13px ui-monospace,monospace; }
+    h1 { margin:12px 12px 0; font-size:14px; font-weight:600; letter-spacing:0.05em; color:#3a2a18; }
+    .row { display:flex; gap:8px; padding:8px; }
+    .v { flex:1; background:#deb87a; border:1px solid #8a6a40; border-radius:4px; overflow:hidden; }
+    .v canvas { display:block; width:100%; aspect-ratio:1/1; }
+    .v .lbl { padding:4px 8px; font-size:11px; color:#5a4220; background:#cfa468; border-top:1px solid #8a6a40; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<h1>CACTUS — saguaro geometry (lib/scatter/cactus.js)</h1>
+<div class="row">
+  <div class="v"><canvas id="cv-front"></canvas><div class="lbl">FRONT (looking along +Z)</div></div>
+  <div class="v"><canvas id="cv-side"></canvas><div class="lbl">SIDE (looking along +X)</div></div>
+  <div class="v"><canvas id="cv-iso"></canvas><div class="lbl">ISO (front-right, fixed)</div></div>
+  <div class="v"><canvas id="cv-turn"></canvas><div class="lbl">TURNTABLE (animated)</div></div>
+</div>
+<script type="module">
+import { buildCactusGeometry } from './lib/scatter/cactus.js';
+
+const geom = buildCactusGeometry(THREE);
+
+// Geometry stats so we can spot regressions in tri-count at a glance.
+const triCount = (geom.index ? geom.index.count : geom.attributes.position.count) / 3;
+document.querySelector('h1').textContent =
+  `CACTUS — saguaro geometry (${Math.round(triCount)} tris, ${geom.attributes.position.count} verts)`;
+
+// One material reused across all four views. vertexColors:true so the
+// per-vertex green from buildCactusGeometry comes through (matches how the
+// scatter system renders them in-game).
+const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+// Build one view: scene + ground + camera + renderer + cactus mesh.
+function makeView(canvasId, cam) {
+  const canvas = document.querySelector(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xdeb87a);
+
+  // Lighting close to the in-game desert biome: warm hemisphere + a sun.
+  const hemi = new THREE.HemisphereLight(0xf2cd8a, 0x6a4a20, 0.7);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff4d0, 1.0);
+  sun.position.set(4, 8, 6);
+  scene.add(sun);
+
+  // Sandy ground disc at y=0 so we can see how deep the trunk sinks.
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(6, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: 0xc49b5a }),
+  );
+  scene.add(ground);
+
+  // The cactus mesh itself.
+  const mesh = new THREE.Mesh(geom, material);
+  scene.add(mesh);
+
+  // Subtle reference grid so the user can eyeball heights. Lines every
+  // 1m up to y=8, with the y=3 line highlighted (old trunk top).
+  const grid = new THREE.GridHelper(8, 8, 0x6a4a20, 0x8a6a40);
+  grid.position.y = 0.001;
+  grid.material.opacity = 0.35;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w || canvas.height !== h) {
+      renderer.setSize(w, h, false);
+      if (cam.isPerspectiveCamera) { cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    }
+  }
+
+  return { renderer, scene, cam, mesh, resize };
+}
+
+// Orthographic helper so the three fixed views share scale.
+function ortho(halfW = 5) {
+  const c = new THREE.OrthographicCamera(-halfW, halfW, halfW, -halfW, 0.1, 100);
+  return c;
+}
+
+const front = makeView('#cv-front', ortho(5));
+front.cam.position.set(0, 3, 12); front.cam.lookAt(0, 3, 0);
+
+const side  = makeView('#cv-side', ortho(5));
+side.cam.position.set(12, 3, 0); side.cam.lookAt(0, 3, 0);
+
+const iso   = makeView('#cv-iso', ortho(5));
+iso.cam.position.set(8, 8, 8); iso.cam.lookAt(0, 3, 0);
+
+const turn  = makeView('#cv-turn', new THREE.PerspectiveCamera(35, 1, 0.1, 100));
+turn.cam.position.set(0, 4, 12); turn.cam.lookAt(0, 3, 0);
+
+function tick(now) {
+  // Spin the turntable view's cactus only (the fixed views stay locked
+  // so you can see exact proportions front/side/iso).
+  turn.mesh.rotation.y = now * 0.0006;
+  for (const v of [front, side, iso, turn]) {
+    v.resize();
+    v.renderer.render(v.scene, v.cam);
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

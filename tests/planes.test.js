@@ -4,8 +4,10 @@ import { PLANES, PLANE_ORDER } from '../lib/game/planes.js';
 const STAT_KEYS = ['maxSpeed', 'maxPitchRate', 'maxYawRate', 'fuelDrainRate', 'maxFuel', 'collisionRadius'];
 
 describe('PLANES roster', () => {
-  it('contains exactly the six expected keys', () => {
-    expect(Object.keys(PLANES).sort()).toEqual(['biplane', 'f15', 'f22', 'f86', 'triplane', 'ww2']);
+  it('contains exactly the expected keys', () => {
+    expect(Object.keys(PLANES).sort()).toEqual([
+      'a10', 'biplane', 'f15', 'f16', 'f18', 'f22', 'f4', 'f86', 'p51', 'sr71', 'triplane', 'ww2',
+    ]);
   });
 
   it('each plane has name, build (function), and stats', () => {
@@ -27,17 +29,24 @@ describe('PLANES roster', () => {
     }
   });
 
-  it('PLANE_ORDER lists all 6 in tier order biplane → f22', () => {
-    expect(PLANE_ORDER).toEqual(['biplane', 'triplane', 'ww2', 'f86', 'f15', 'f22']);
+  it('PLANE_ORDER lists every plane in historical tier order', () => {
+    expect(PLANE_ORDER).toEqual([
+      'biplane', 'triplane', 'ww2', 'p51', 'f86', 'f4', 'a10', 'f16', 'f18', 'f15', 'f22', 'sr71',
+    ]);
     expect(PLANE_ORDER.length).toBe(Object.keys(PLANES).length);
   });
 
-  it('speed ascends through PLANE_ORDER', () => {
-    let prev = -Infinity;
-    for (const key of PLANE_ORDER) {
-      const s = PLANES[key].stats.maxSpeed;
-      expect(s).toBeGreaterThan(prev);
-      prev = s;
-    }
+  // Speed is roughly tiered (props < jets) but no longer strictly ascends
+  // through PLANE_ORDER — the Fokker triplane is intentionally slower than
+  // the Sopwith biplane to capture its real-world Dr.I character (slow but
+  // extremely agile), and the F-22 trades top speed for thrust-vectoring
+  // agility versus the F-15. The invariant we still want is that every
+  // prop plane is slower than every jet.
+  it('all props are slower than every jet', () => {
+    const props = ['biplane', 'triplane', 'ww2', 'p51'];
+    const jets  = ['f86', 'f4', 'a10', 'f16', 'f18', 'f15', 'f22', 'sr71'];
+    const slowestJet = Math.min(...jets.map(k => PLANES[k].stats.maxSpeed));
+    const fastestProp = Math.max(...props.map(k => PLANES[k].stats.maxSpeed));
+    expect(fastestProp).toBeLessThan(slowestJet);
   });
 });

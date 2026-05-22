@@ -3,12 +3,17 @@ import { createTerrain } from '../lib/terrain/index.js';
 import { PLANES } from '../lib/game/planes.js';
 import { PlanePhysics, DragInput } from '../lib/plane/controller.js';
 import { ChaseCamera } from '../lib/plane/camera.js';
+import { ScoreTracker } from '../lib/game/score.js';
+import { WingContrail } from '../lib/plane/contrails.js';
+import { FlameCone }    from '../lib/plane/flame-cone.js';
+import { PlaneShadow }  from '../lib/plane/shadow.js';
+import { loadLastVisitPos } from '../lib/poi/markers.js';
 import { crashed, clampToCeiling, CEILING } from '../lib/game/collision.js';
 import { StateMachine } from '../lib/game/state.js';
 import { buildMenu } from '../lib/ui/menu.js';
 import { buildHUD } from '../lib/ui/hud.js';
 import { buildCrashOverlay } from '../lib/ui/crash-overlay.js';
-import { biomeAt, BIOMES } from '../lib/game/biomes.js';
+import { biomeAt, biomeDominanceAt, BIOMES } from '../lib/game/biomes.js';
 import { buildScatterRegistry } from '../lib/scatter/index.js';
 
 console.log('[flight-sim] ' + VERSION);
@@ -139,22 +144,110 @@ const WORLD_PLANE_SCALE = 0.875;   // 3.5× the previous 0.25 — larger, more r
 let worldPlaneMesh = null;
 
 // --- Ground shadow ---
-// Simple dark disk projected straight down to terrain height. Always
-// horizontal (does not roll/pitch with the plane), sized to cover the
-// largest in-flight plane silhouette. Fades with altitude so a high-flying
-// plane has no visible shadow.
-const SHADOW_RADIUS = 14.0;   // covers the largest plane wingspan at WORLD_PLANE_SCALE=0.875
-const SHADOW_FADE_LOW  = 5;     // below this altitude (m AGL): full opacity
-const SHADOW_FADE_HIGH = 250;   // above this: invisible
-const shadowGeom = new THREE.CircleGeometry(SHADOW_RADIUS, 24);
-shadowGeom.rotateX(-Math.PI / 2);  // lie flat on XZ plane
-const shadowMat = new THREE.MeshBasicMaterial({
-  color: 0x000000, transparent: true, opacity: 0.4,
-  depthWrite: false,
-});
-const planeShadow = new THREE.Mesh(shadowGeom, shadowMat);
-planeShadow.renderOrder = 1;
-worldScene.add(planeShadow);
+// Per-plane silhouette tessellated into a ground-conforming grid (see
+// lib/plane/shadow.js). Drapes over terrain via per-vertex heightfield
+// samples each frame, so the shadow follows hills instead of clipping
+// or floating like a flat disk would.
+const planeShadow = new PlaneShadow(THREE, worldScene);
+
+// Per-plane wingtip offsets in plane-local coords (+X right, -X left,
+// +Y up, -Z forward). One contrail spawns per entry. Planes not listed
+// fall back to a generic two-tip layout at (±collisionRadius, 0, 0).
+// Positions are the visible mid-outboard edge of the wing for swept-wing
+// jets — not the plane's center-of-fuselage Z, which is what the fallback
+// computes; with sweep the actual wingtip ends up significantly behind
+// the plane's longitudinal centre, so contrails from the fallback emit
+// well in front of where the wing edge actually is.
+const PLANE_CONTRAIL_TIPS = {
+  biplane: [
+    { x: -3.5, y: -0.25, z: -1.20 }, { x:  3.5, y: -0.25, z: -1.20 },  // lower wing
+    { x: -3.7, y:  1.10, z: -1.50 }, { x:  3.7, y:  1.10, z: -1.50 },  // upper wing
+  ],
+  triplane: [
+    { x: -3.0, y:  1.50, z: -1.10 }, { x:  3.0, y:  1.50, z: -1.10 },  // top wing
+    { x: -3.0, y:  0.55, z: -1.05 }, { x:  3.0, y:  0.55, z: -1.05 },  // middle wing
+    { x: -2.8, y: -0.40, z: -1.00 }, { x:  2.8, y: -0.40, z: -1.00 },  // bottom wing
+  ],
+  // P-51's wing is a flat 11 m rectangle at mesh-Y -0.25 and Z -0.5; no
+  // sweep, so the tip is just the outboard mid-chord.
+  p51: [
+    { x: -5.5, y: -0.25, z: -0.50 }, { x: 5.5, y: -0.25, z: -0.50 },
+  ],
+  // A-10's wings are 17 m straight rectangles; tips at ±8.5 outboard.
+  a10: [
+    { x: -8.5, y: -0.20, z: -0.40 }, { x: 8.5, y: -0.20, z: -0.40 },
+  ],
+  // F-4 outer panels have dihedral, so the wingtip sits 0.47 m above the
+  // wing root. Mid-outboard of the outer panel after the ZYX rotation:
+  // ±4.40 m outboard, 0.95 m behind plane centre, 0.47 m up.
+  f4: [
+    { x: -4.40, y: 0.47, z: 0.95 }, { x: 4.40, y: 0.47, z: 0.95 },
+  ],
+  // F-16's cropped delta sweeps back; outboard edge midpoint is ~1.8 m
+  // behind centre, ±4.6 m outboard.
+  f16: [
+    { x: -4.6, y: -0.10, z: 1.80 }, { x: 4.6, y: -0.10, z: 1.80 },
+  ],
+  // F-18's wing sweeps 28°; outboard edge midpoint is ~1.83 m behind centre,
+  // ±4.42 m outboard (BoxGeometry 4.8 × 3.0 at ±2.3 mesh-X after rotation).
+  f18: [
+    { x: -4.42, y: -0.05, z: 1.83 }, { x: 4.42, y: -0.05, z: 1.83 },
+  ],
+  // SR-71's delta wing sweeps deep back so the tip is far aft: shape tip
+  // (5.6, -5.5) lands at world (±5.6, -0.25, 5.5) — near the tail.
+  sr71: [
+    { x: -5.6, y: -0.25, z: 5.50 }, { x: 5.6, y: -0.25, z: 5.50 },
+  ],
+};
+function getContrailTips(planeKey) {
+  if (PLANE_CONTRAIL_TIPS[planeKey]) return PLANE_CONTRAIL_TIPS[planeKey];
+  const r = PLANES[planeKey].stats.collisionRadius;
+  return [{ x: -r, y: 0, z: 0 }, { x: r, y: 0, z: 0 }];
+}
+
+// Active contrails: rebuilt on every plane change so a biplane gets 4 ribbons,
+// a triplane 6, every other plane 2. Each entry pairs the WingContrail mesh
+// with the local (x,y,z) wingtip offset to sample each frame.
+const contrails = [];
+function rebuildContrailsFor(key) {
+  for (const c of contrails) c.contrail.dispose();
+  contrails.length = 0;
+  for (const tip of getContrailTips(key)) {
+    contrails.push({ tip, contrail: new WingContrail(THREE, worldScene) });
+  }
+}
+
+// Engine nozzle positions for jet aircraft only. Coordinates from each
+// plane's mesh code: nozzles sit at +Z (rear) of the fuselage. Propeller
+// planes (biplane / triplane / ww2 / p51) are absent — they get no exhaust.
+// A-10 also omitted: its high-bypass turbofans don't show flame in real
+// life, and a glow plume on a low-and-slow CAS plane would look wrong.
+const PLANE_JET_NOZZLES = {
+  f86:  [{ x:  0.0,  y:  0.00, z: 4.4 }],
+  f4:   [{ x: -0.42, y: -0.05, z: 5.05 }, { x: 0.42, y: -0.05, z: 5.05 }],
+  f16:  [{ x:  0.0,  y:  0.00, z: 4.4 }],
+  f18:  [{ x: -0.35, y: -0.05, z: 4.4 }, { x: 0.35, y: -0.05, z: 4.4 }],
+  f15:  [{ x: -0.4,  y: -0.05, z: 5.0 }, { x: 0.4,  y: -0.05, z: 5.0 }],
+  f22:  [{ x: -0.4,  y: -0.10, z: 4.7 }, { x: 0.4,  y: -0.10, z: 4.7 }],
+  // SR-71 nozzles sit at the back of each engine nacelle — outboard and
+  // far aft compared to a normal fighter.
+  sr71: [{ x: -2.3, y: -0.20, z: 6.3 }, { x: 2.3, y: -0.20, z: 6.3 }],
+};
+// Flame cones attach to the WORLD PLANE MESH (not the scene), so they
+// inherit its rotation and 0.875× scale and don't need per-frame world
+// transform math — the local position is just the nozzle offset.
+const flameCones = [];
+function rebuildJetExhaustsFor(key) {
+  for (const f of flameCones) f.dispose();
+  flameCones.length = 0;
+  const nozzles = PLANE_JET_NOZZLES[key];
+  if (!nozzles) return;
+  for (const nozzle of nozzles) {
+    const cone = new FlameCone(THREE, worldPlaneMesh);
+    cone.setLocalPosition(nozzle.x, nozzle.y, nozzle.z);
+    flameCones.push(cone);
+  }
+}
 
 function setWorldPlane(key) {
   if (worldPlaneMesh) {
@@ -172,12 +265,46 @@ function setWorldPlane(key) {
   worldPlaneMesh = PLANES[key].build(THREE);
   worldPlaneMesh.scale.setScalar(WORLD_PLANE_SCALE);
   worldScene.add(worldPlaneMesh);
+  rebuildContrailsFor(key);
+  rebuildJetExhaustsFor(key);
+  planeShadow.setScale(PLANES[key].stats.collisionRadius);
 }
 setWorldPlane(currentPlane);
 
+// Scratch vector for per-frame contrail/nozzle world-position math.
+const _tmpWingtip = new THREE.Vector3();
+function computeTipWorld(tip) {
+  _tmpWingtip.set(
+    tip.x * WORLD_PLANE_SCALE,
+    tip.y * WORLD_PLANE_SCALE,
+    tip.z * WORLD_PLANE_SCALE,
+  );
+  _tmpWingtip.applyQuaternion(physics.quat);
+  _tmpWingtip.x += physics.x;
+  _tmpWingtip.y += physics.y;
+  _tmpWingtip.z += physics.z;
+  return _tmpWingtip;
+}
+
 let physics = new PlanePhysics(PLANES[currentPlane].stats);
+// Decide where to drop the plane on respawn / launch. If the player has
+// flown through any POI this session, spawn ~500 m above that POI's ground
+// so they continue exploring from there; otherwise fall back to the world
+// origin spawn computed at module load.
+function computeSpawn() {
+  const last = loadLastVisitPos();
+  if (last) {
+    return {
+      x: last.x,
+      y: terrain.getHeight(last.x, last.z) + 500,
+      z: last.z,
+    };
+  }
+  return { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z };
+}
 function resetPhysicsToSpawn() {
-  physics.x = spawnPos.x; physics.y = spawnPos.y; physics.z = spawnPos.z;
+  const s = computeSpawn();
+  physics.x = s.x; physics.y = s.y; physics.z = s.z;
   // Identity quaternion: nose at -Z, wings level.
   physics.quat.x = 0; physics.quat.y = 0; physics.quat.z = 0; physics.quat.w = 1;
   physics.forward.x = 0; physics.forward.y = 0; physics.forward.z = -1;
@@ -193,6 +320,11 @@ resetPhysicsToSpawn();
 const chase = new ChaseCamera(THREE, worldCam);
 const input = new DragInput(canvas);
 
+// Trick-based score system. Persistent stars (★) + loop / barrel-roll /
+// inverted / low-altitude bonuses (see lib/game/score.js). One tracker
+// for the whole session.
+const scoreTracker = new ScoreTracker();
+
 // --- Active scene selector — switched by state machine on enter ---
 let activeScene = menuScene;
 let activeCam = menuCam;
@@ -204,26 +336,18 @@ function clearUI() { if (activeUI) { activeUI.dispose(); activeUI = null; } }
 // Countdown so terrain finishes any tail-end streaming before plane moves
 let flyingCountdown = 0;
 
-// Update the ground shadow to sit at terrain height directly below the
-// plane, fading with altitude. Called every flight frame.
+// Update the ground shadow each flight frame. PlaneShadow handles the
+// per-vertex height sampling, yaw orientation, and altitude fade internally.
 function updatePlaneShadow() {
-  const groundY = terrain.getHeight(physics.x, physics.z);
-  planeShadow.position.set(physics.x, groundY + 0.2, physics.z);
-  const alt = physics.y - groundY;
-  // Linear fade from full opacity at low altitude to zero at SHADOW_FADE_HIGH.
-  let a = 1;
-  if (alt > SHADOW_FADE_LOW) {
-    a = 1 - (alt - SHADOW_FADE_LOW) / (SHADOW_FADE_HIGH - SHADOW_FADE_LOW);
-    if (a < 0) a = 0;
-  }
-  planeShadow.material.opacity = 0.45 * a;
-  planeShadow.visible = a > 0.01;
+  planeShadow.update(physics, terrain);
 }
 
 // HUD nav helper: nearest village direction relative to plane heading.
-// Returns { villageBearing, villageDistance } where bearing is radians from
-// straight-ahead (0 = ahead, +π/2 = right, -π/2 = left). Empty object when
-// the registry has no villages so the HUD hides the marker.
+// Returns { villageBearing, villageDistance, villageType } where bearing is
+// radians from straight-ahead (0 = ahead, +π/2 = right, -π/2 = left) and
+// villageType is the POI templateKey ('forest' | 'castle' | 'monastery' |
+// 'town' | …) so the HUD can label it correctly. Empty object when the
+// registry has no villages so the HUD hides the marker.
 function computeVillageNav(terrain, physics) {
   if (!terrain.nearestVillage) return {};
   const nv = terrain.nearestVillage(physics.x, physics.z);
@@ -239,7 +363,13 @@ function computeVillageNav(terrain, physics) {
   // Normalize to (-π, π]
   while (bearing > Math.PI)  bearing -= 2 * Math.PI;
   while (bearing <= -Math.PI) bearing += 2 * Math.PI;
-  return { villageBearing: bearing, villageDistance: nv.distance };
+  const villageVisited = !!(terrain.markers && terrain.markers.isVisited(`v:${nv.id}`));
+  return {
+    villageBearing: bearing,
+    villageDistance: nv.distance,
+    villageType: nv.templateKey,
+    villageVisited,
+  };
 }
 
 // --- State machine ---
@@ -287,6 +417,11 @@ const sm = new StateMachine({
         // lerping from wherever it ended last flight. ChaseCamera treats
         // _initialized=false as "snap on next update".
         chase._initialized = false;
+        // Same idea for contrails: drop the old ring-buffer so the trail
+        // doesn't draw a long streak from the previous crash location to
+        // the new spawn position. Flame cones are attached to the plane
+        // mesh so they teleport with it and need no reset.
+        for (const c of contrails) c.contrail.reset();
         flyingCountdown = 1.5;
         activeUI = buildHUD({
           root: uiRoot, version: VERSION,
@@ -323,12 +458,60 @@ const sm = new StateMachine({
         terrain.update(worldCam.position);
         applyBiome(physics.x, physics.z);
         updatePlaneShadow();
+        // Contrails: update AFTER chase.update so the camera is already at
+        // its new pose for this frame, otherwise the billboard direction
+        // lags one frame behind the visible camera.
+        for (const c of contrails) c.contrail.update(computeTipWorld(c.tip), worldCam);
+        // Flame cones are attached to the plane mesh, so all we drive each
+        // frame is the shader's time uniform (pulse along the cone axis).
+        if (flameCones.length) {
+          const tSec = performance.now() / 1000;
+          for (const f of flameCones) f.update(tSec);
+        }
         if (terrain.markers) terrain.markers.update(physics, dt);
         const alt = physics.y - terrain.getHeight(physics.x, physics.z);
         // Pass the still-decrementing countdown so the HUD can flash "GO!" for
         // the ~0.4s after the 3/2/1 sequence ends.
         const vNav = computeVillageNav(terrain, physics);
         const flash = terrain.markers ? terrain.markers.consumeFlash() : null;
+        const score = scoreTracker.update(physics, terrain, dt);
+        // Minimap data: every visited landmark's xz + type, plus the
+        // plane's xz and heading. The HUD does the drawing.
+        const visitedPois = [];
+        if (terrain.markers) {
+          for (const m of terrain.markers.markers) {
+            if (!m.visited) continue;
+            const lm = m.landmark;
+            // landmark.id is `v:<num>` — pull the village by index so we
+            // can report templateKey for colour coding.
+            const v = terrain.villageRegistry.all[parseInt(lm.id.slice(2), 10)];
+            visitedPois.push({ x: lm.x, z: lm.z, type: v ? v.templateKey : 'village' });
+          }
+        }
+        const planeHeading = Math.atan2(physics.forward.x, -physics.forward.z);
+        // Report the biome at the chunk's CENTRE (same lookup the scatter
+        // system uses to pick trees) rather than the plane's exact xz. At
+        // a biome boundary the chunk-centre biome is what determines the
+        // trees + dominant ground colour the pilot actually sees; the
+        // plane's exact-xz biome could differ from one to the next as you
+        // taxi across the boundary line, which read as "the HUD is lying".
+        const CHUNK_SIZE = 256;
+        const cx = Math.floor(physics.x / CHUNK_SIZE);
+        const cz = Math.floor(physics.z / CHUNK_SIZE);
+        const chunkCenterX = (cx + 0.5) * CHUNK_SIZE;
+        const chunkCenterZ = (cz + 0.5) * CHUNK_SIZE;
+        const currentBiome = biomeAt(chunkCenterX, chunkCenterZ);
+        const exactBiome   = biomeAt(physics.x, physics.z);
+        // Dominance: how "pure" the chunk's biome blend is. < 85% is the
+        // transition zone where scatter is suppressed (see chunk-manager
+        // SCATTER_DOMINANCE_THRESHOLD). Annotated in the label so you can
+        // tell when you're in a no-tree zone vs a pure-biome interior.
+        const dom = biomeDominanceAt(chunkCenterX, chunkCenterZ);
+        const domPct = Math.round(dom.weight * 100);
+        const baseLabel = (exactBiome.name === currentBiome.name)
+          ? currentBiome.name
+          : `${currentBiome.name} / ${exactBiome.name}`;
+        const biomeLabel = `${baseLabel} ${domPct}%`;
         activeUI.update({
           speed: physics.speed,
           altitude: alt,
@@ -337,6 +520,14 @@ const sm = new StateMachine({
           visitedCount: terrain.markers ? terrain.markers.visitedCount : 0,
           visitedTotal: terrain.markers ? terrain.markers.total : 0,
           flashT: flash ? flash.t : 0,
+          stars: score.stars,
+          bonuses: score.bonuses,
+          trickFlash: score.flash,
+          biome: biomeLabel,
+          planeX: physics.x,
+          planeZ: physics.z,
+          heading: planeHeading,
+          visitedPois,
           ...vNav,
         });
         flyingCountdown -= dt;
@@ -384,12 +575,17 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     paused = true;
     cancelAnimationFrame(raf);
+    // Tab-hide may precede a kill; flush score now so the last few
+    // seconds of earnings aren't lost.
+    scoreTracker.saveNow();
   } else {
     paused = false;
     lastFrame = performance.now();
     raf = requestAnimationFrame(frame);
   }
 });
+// Also flush on full page unload (closing the tab without backgrounding).
+window.addEventListener('pagehide', () => scoreTracker.saveNow());
 
 requestAnimationFrame(() => {
   // PlaySDK uses a Proxy that throws on unknown property access; calling

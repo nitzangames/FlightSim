@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Plane Mockups — FlightSim</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; background: #0a0e14; color: #cfd8e0;
+      font-family: ui-monospace, Menlo, monospace; min-height: 100vh;
+    }
+    h1 {
+      text-align: center; font-size: 22px; font-weight: 700;
+      letter-spacing: 0.14em; padding: 18px 0 4px;
+      color: #fff; margin: 0;
+    }
+    .sub {
+      text-align: center; font-size: 12px; color: #8896aa;
+      letter-spacing: 0.06em; margin-bottom: 18px;
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 18px; padding: 0 24px 36px;
+    }
+    .card {
+      background: #11161e; border: 1px solid #1f2530;
+      border-radius: 10px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .card canvas {
+      width: 100%; aspect-ratio: 1 / 1; display: block;
+      background: linear-gradient(180deg, #1d2530 0%, #131820 100%);
+    }
+    .meta {
+      padding: 10px 14px 14px;
+      border-top: 1px solid #1f2530;
+    }
+    .meta .name {
+      font-size: 18px; font-weight: 700; color: #fff;
+      letter-spacing: 0.08em; margin: 0 0 4px;
+    }
+    .meta .desc {
+      font-size: 12px; color: #8896aa; line-height: 1.45;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <h1>PLANE MOCKUPS</h1>
+  <div class="sub">Six candidate planes for the FlightSim roster — rotating preview, real three.js geometry. Approve any you like and I'll wire them into PLANES.</div>
+  <div class="grid" id="grid"></div>
+
+<script type="module">
+const grid = document.getElementById('grid');
+
+// ---------- Plane builders ----------
+// All planes use the codebase convention: nose at -Z, tail at +Z, wings along X.
+// Each returns a THREE.Group ready to drop into a scene.
+
+function mat(c)   { return new THREE.MeshPhongMaterial({ color: c, flatShading: true, shininess: 0 }); }
+
+// ---------- P-51 Mustang ----------
+// In-line V-12 Merlin → long nose. Bubble canopy aft of the wings. Distinctive
+// belly radiator scoop. Olive drab over silver.
+function buildP51(THREE) {
+  const g = new THREE.Group();
+  const YELLOW = 0xeec441, GREY = 0x8a8e96, SILVER = 0xc0c4cc, DARK = 0x35392c, CANOPY = 0x2a3340;
+
+  // Fuselage in two halves: yellow front (nose-art livery), grey rear. The
+  // split sits at z=0 (cockpit centre) so the wings — emerging from the
+  // belly — straddle both colours.
+  const bodyFront = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 3.75), mat(YELLOW));
+  bodyFront.position.z = -1.875;
+  g.add(bodyFront);
+  const bodyBack = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 3.75), mat(GREY));
+  bodyBack.position.z =  1.875;
+  g.add(bodyBack);
+  // Spinner nose
+  const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.0, 10), mat(DARK));
+  spinner.rotation.x = -Math.PI / 2;
+  spinner.position.z = -4.25;
+  g.add(spinner);
+  // Prop disk
+  const prop = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.08, 0.10), mat(0x1c1c20));
+  prop.position.z = -4.6;
+  g.add(prop);
+
+  // Wings (slightly tapered rectangle).
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.20, 2.4), mat(SILVER));
+  wing.position.set(0, -0.25, -0.5);
+  g.add(wing);
+  // Wing fillet — paints the wing-root blend grey to match the rear half.
+  const fillet = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.55, 1.8), mat(GREY));
+  fillet.position.set(0, -0.10, -0.5);
+  g.add(fillet);
+
+  // Bubble canopy aft of wings.
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    mat(CANOPY),
+  );
+  canopy.position.set(0, 0.55, 0.4);
+  canopy.scale.set(0.9, 1.0, 2.0);
+  g.add(canopy);
+
+  // Belly radiator scoop (signature P-51 silhouette).
+  const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.45, 1.6), mat(SILVER));
+  scoop.position.set(0, -0.85, 0.3);
+  g.add(scoop);
+
+  // Vertical tail.
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 1.4), mat(GREY));
+  fin.position.set(0, 0.75, 3.2);
+  g.add(fin);
+  // Horizontal stabilizers.
+  const stab = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.15, 0.9), mat(GREY));
+  stab.position.set(0, 0.10, 3.4);
+  g.add(stab);
+
+  return g;
+}
+
+// ---------- F-4 Phantom II ----------
+// Big twin-engine fighter, swept wings with distinctive anhedral outer panels,
+// down-tilted horizontal stabs, long pointed nose.
+function buildF4(THREE) {
+  const g = new THREE.Group();
+  // Outer-panel olive matches the A-10's OLIVE (0x4a5040) so the two
+  // planes share a coherent green from the same palette.
+  // Vietnam-era three-tone scheme: A-10 OLIVE (0x4a5040) for the fuselage
+  // and outer wings, an earthy BROWN for the nose / inner-wing / tail
+  // surfaces, plus a DARK contrast under the intakes.
+  const GREEN = 0x4a5040, BROWN = 0x6b5538, DARK = 0x3a3a36, CANOPY = 0x2a3340, STEEL = 0x40434a, EXH = 0x111111;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.05, 9.5), mat(GREEN));
+  g.add(body);
+  // Long pointed radar nose.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 10), mat(BROWN));
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -5.95;
+  g.add(nose);
+
+  // Twin side intakes.
+  const intakeGeo = new THREE.BoxGeometry(0.55, 0.7, 1.6);
+  for (const sx of [-0.85, 0.85]) {
+    const intake = new THREE.Mesh(intakeGeo, mat(DARK));
+    intake.position.set(sx, -0.2, -1.0);
+    g.add(intake);
+  }
+
+  // Inner wing root (level) — narrow strip at the fuselage shoulder.
+  // Moved further forward so the wing assembly sits under the cockpit.
+  const wingRoot = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 2.6), mat(GREEN));
+  wingRoot.position.set(0, -0.20, -1.2);
+  g.add(wingRoot);
+  // Each wing on this F-4 is built from TWO panels so the kink between
+  // them is unmistakable: a flat grey INNER panel that attaches to the
+  // wing root, then a green OUTER panel that hinges UPWARD at the
+  // mid-span break. The two ExtrudeGeometry shapes share the cut line —
+  // the inner panel's outboard edge and the outer panel's inboard edge
+  // sit at the same chord positions, so the seam reads as a clean fold.
+  //
+  // Shape +Y maps to world -Z (forward) after rotation.x = -π/2 below;
+  // CCW vertex order keeps ExtrudeGeometry's normals outward-facing.
+  const sweep = -32 * Math.PI / 180;     // shared with the horizontal stabs below
+  const KINK = 1.9;                      // mid-span X where the panels meet
+  const innerShape = new THREE.Shape();
+  innerShape.moveTo(0.0,    1.0);        // root leading
+  innerShape.lineTo(0.0,   -1.3);        // root trailing
+  innerShape.lineTo(KINK,  -1.85);       // mid-span trailing (at the kink)
+  innerShape.lineTo(KINK,  -0.30);       // mid-span leading  (at the kink)
+  innerShape.lineTo(0.0,    1.0);
+  const innerGeo = new THREE.ExtrudeGeometry(innerShape, { depth: 0.18, bevelEnabled: false });
+
+  const outerShape = new THREE.Shape();
+  outerShape.moveTo(0.0,  -0.30);        // kink leading (X=0 = inboard edge of this panel)
+  outerShape.lineTo(0.0,  -1.85);        // kink trailing
+  outerShape.lineTo(1.9,  -2.40);        // tip trailing (full span 3.8 ÷ 2 from the kink)
+  outerShape.lineTo(1.9,  -1.60);        // tip leading
+  outerShape.lineTo(0.0,  -0.30);
+  const outerGeo = new THREE.ExtrudeGeometry(outerShape, { depth: 0.18, bevelEnabled: false });
+
+  for (const side of [-1, 1]) {
+    // Inner panel — flat, brown, attached at the wing-root shoulder.
+    const inner = new THREE.Mesh(innerGeo, mat(BROWN));
+    inner.scale.x = side;
+    inner.position.set(side * 0.75, -0.27, -1.05);
+    inner.rotation.x = -Math.PI / 2;
+    g.add(inner);
+
+    // Outer panel — green, attached at the kink, tilted up so the tip kicks
+    // up by ~0.74 m over the panel's 1.9 m span (~23° dihedral). Rotation
+    // order matters here: default 'XYZ' applies Rz before Rx, which would
+    // skew the inboard edge ~0.7 m outboard of the wing-root kink and open
+    // a visible gap. 'ZYX' applies Rx first (orienting the shape flat),
+    // then Rz around what is now the chord/forward-back axis — the
+    // inboard edge stays anchored at world X = 0.75 + KINK.
+    const outer = new THREE.Mesh(outerGeo, mat(GREEN));
+    outer.scale.x = side;
+    outer.position.set(side * (0.75 + KINK), -0.27, -1.05);   // attached AT the kink
+    outer.rotation.order = 'ZYX';
+    outer.rotation.x = -Math.PI / 2;
+    outer.rotation.z = side * 0.40;                            // dihedral UP-kink
+    g.add(outer);
+  }
+
+  // Long canopy (two-seat).
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.50, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
+  );
+  canopy.position.set(0, 0.60, -1.5);
+  canopy.scale.set(0.85, 1.0, 3.0);
+  g.add(canopy);
+
+  // Tall vertical tail — trapezoid with a swept-back leading edge.
+  // Shape is built in (chord, height) coords (shape-X = chord, shape-Y =
+  // height); rotation.y = -π/2 maps shape-X to world-Z so the fin stands
+  // upright in the YZ plane with its extrude depth (0.14 m) in world X.
+  const f4FinShape = new THREE.Shape();
+  f4FinShape.moveTo(-0.6,  0.0);   // base leading (forward)
+  f4FinShape.lineTo( 0.9,  0.0);   // base trailing (back)
+  f4FinShape.lineTo( 0.9,  1.7);   // tip trailing
+  f4FinShape.lineTo( 0.3,  1.7);   // tip leading (chord shrinks at the top)
+  f4FinShape.lineTo(-0.6,  0.0);
+  const f4FinGeo = new THREE.ExtrudeGeometry(f4FinShape, { depth: 0.14, bevelEnabled: false });
+  const fin = new THREE.Mesh(f4FinGeo, mat(BROWN));
+  fin.rotation.y = -Math.PI / 2;          // chord into world Z, extrude into world X
+  fin.position.set(0.07, 0.10, 3.3);      // +0.07 centres the 0.14-thick extrude
+  g.add(fin);
+
+  // Anhedral horizontal stabs (signature F-4 down-tilt).
+  const stabGeo = new THREE.BoxGeometry(2.6, 0.15, 1.1);
+  for (const side of [-1, 1]) {
+    const s = new THREE.Mesh(stabGeo, mat(BROWN));
+    s.position.set(side * 1.4, -0.1, 3.6);
+    s.rotation.y = side * sweep * 0.6;
+    s.rotation.z = side * 0.18;    // down-bent tips
+    g.add(s);
+  }
+
+  // Twin exhaust nozzles.
+  for (const sx of [-0.42, 0.42]) {
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 0.55, 10), mat(STEEL));
+    ex.rotation.x = Math.PI / 2;
+    ex.position.set(sx, -0.05, 5.05);
+    g.add(ex);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.32, 12), mat(EXH));
+    hole.rotation.y = Math.PI;
+    hole.position.set(sx, -0.05, 5.35);
+    g.add(hole);
+  }
+
+  return g;
+}
+
+// ---------- SR-71 Blackbird ----------
+// Long thin fuselage with chines extending nearly the whole length, huge
+// engine nacelles mid-wing, delta wings, twin canted tails. Matte black.
+function buildSR71(THREE) {
+  const g = new THREE.Group();
+  const BLACK = 0x1a1a1f, DARKER = 0x101015, CANOPY = 0x2a3340, EXH = 0x111111, STEEL = 0x3a3a40;
+
+  // Long slim cylindrical fuselage.
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 12.0, 12), mat(BLACK));
+  body.rotation.x = Math.PI / 2;
+  g.add(body);
+
+  // Pointed nose.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.0, 10), mat(BLACK));
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -7.5;
+  g.add(nose);
+
+  // Chines — flat plates along the sides of the fuselage that blend nose
+  // into wing. Signature shape.
+  const chineGeo = new THREE.BoxGeometry(0.45, 0.12, 9.0);
+  for (const side of [-1, 1]) {
+    const c = new THREE.Mesh(chineGeo, mat(DARKER));
+    c.position.set(side * 0.7, 0, -1.0);
+    g.add(c);
+  }
+
+  // Delta wings shifted back so the trailing edge sits at the rear end of
+  // the body cylinder (body half-length is 6, so root TE at world Z=+6).
+  // Shape-Y values shifted by -2.5 from the original delta so the wing
+  // occupies roughly the back half of the fuselage, matching the real
+  // SR-71 silhouette. CCW vertex order keeps normals outward.
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0.0,  0.5);     // root leading (just behind cockpit area)
+  wingShape.lineTo(0.0, -6.0);     // root trailing (rear end of body)
+  wingShape.lineTo(5.6, -5.5);     // tip (outboard, just inside rear)
+  wingShape.lineTo(0.0,  0.5);
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.18, bevelEnabled: false });
+  for (const side of [-1, 1]) {
+    const w = new THREE.Mesh(wingGeo, mat(BLACK));
+    w.scale.x = side;
+    w.position.set(0, -0.25, 0);   // y-offset because extrusion is along z (now y after rotation)
+    w.rotation.x = -Math.PI / 2;
+    g.add(w);
+  }
+
+  // Engine nacelles mid-wing — huge. Shifted back by 2.5 m to track the
+  // wings (since they integrate into the wing structure on the real plane).
+  for (const side of [-1, 1]) {
+    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.65, 5.0, 12), mat(DARKER));
+    nac.rotation.x = Math.PI / 2;
+    nac.position.set(side * 2.3, -0.2, 3.8);
+    g.add(nac);
+    // Spike inlet cone (signature SR-71 feature).
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.6, 8), mat(STEEL));
+    spike.rotation.x = -Math.PI / 2;
+    spike.position.set(side * 2.3, -0.2, 1.0);
+    g.add(spike);
+    // Exhaust hole at the rear of the nacelle.
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.58, 12), mat(EXH));
+    hole.rotation.y = Math.PI;
+    hole.position.set(side * 2.3, -0.2, 6.31);
+    g.add(hole);
+  }
+
+  // Cockpit canopy (offset forward).
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
+  );
+  canopy.position.set(0, 0.50, -3.6);
+  canopy.scale.set(0.7, 1.0, 2.4);
+  g.add(canopy);
+
+  // Twin canted tails on the engine nacelles — shifted back with everything
+  // else so they sit on the rear of each nacelle.
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 1.4), mat(BLACK));
+    fin.position.set(side * 2.3, 0.65, 5.1);
+    fin.rotation.z = side * -0.22;   // canted inward at top
+    g.add(fin);
+  }
+
+  return g;
+}
+
+// ---------- A-10 Warthog ----------
+// Twin engines mounted HIGH on the rear fuselage (signature), straight long
+// wings, twin tails, big nose cannon barrel.
+function buildA10(THREE) {
+  const g = new THREE.Group();
+  const OLIVE = 0x4a5040, DARK = 0x2d3027, GREY = 0x6e7280, CANOPY = 0x2a3340, EXH = 0x111111, BARREL = 0x252830;
+
+  // Chunky fuselage.
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 8.5), mat(OLIVE));
+  g.add(body);
+
+  // Distinctive nose cannon barrel — long thin cylinder protruding forward.
+  const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 2.4, 10), mat(BARREL));
+  cannon.rotation.x = Math.PI / 2;
+  cannon.position.set(0, -0.15, -5.4);
+  g.add(cannon);
+  // Cannon muzzle (thicker tip).
+  const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 10), mat(DARK));
+  muzzle.rotation.x = Math.PI / 2;
+  muzzle.position.set(0, -0.15, -6.45);
+  g.add(muzzle);
+  // Nose cone.
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.95, 1.4), mat(OLIVE));
+  nose.position.set(0, 0.0, -4.95);
+  g.add(nose);
+
+  // Long straight wings (no sweep).
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(17.0, 0.22, 2.6), mat(OLIVE));
+  wing.position.set(0, -0.20, -0.4);
+  g.add(wing);
+  // Wing-tip Hoerner fences (small downward-turning tips).
+  const tipGeo = new THREE.BoxGeometry(0.25, 0.55, 1.6);
+  for (const side of [-1, 1]) {
+    const t = new THREE.Mesh(tipGeo, mat(DARK));
+    t.position.set(side * 8.4, -0.45, -0.4);
+    g.add(t);
+  }
+
+  // Twin engine pods mounted HIGH on the rear fuselage (the A-10's signature
+  // look). Pods moved FORWARD so their exhaust clears the empennage with
+  // visible breathing room — on the real plane the engines sit just behind
+  // the wing, not on top of the tail.
+  for (const side of [-1, 1]) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.6, 12), mat(GREY));
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(side * 0.85, 0.95, 1.6);
+    g.add(pod);
+    // Pylon connecting pod to fuselage.
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.85, 1.6), mat(OLIVE));
+    pylon.position.set(side * 0.85, 0.50, 1.6);
+    g.add(pylon);
+    // Exhaust at the rear of the pod.
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.45, 12), mat(EXH));
+    hole.rotation.y = Math.PI;
+    hole.position.set(side * 0.85, 0.95, 2.91);
+    g.add(hole);
+  }
+
+  // Twin vertical tails — wide outboard placement for the H-tail silhouette.
+  // Lowered so the horizontal stab sits at wing-level and the fins rise
+  // from there, instead of riding on top of the rear fuselage.
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.5, 1.5), mat(OLIVE));
+    fin.position.set(side * 2.3, 0.55, 4.0);
+    g.add(fin);
+  }
+  // Horizontal stabilizer connecting both fins — dropped to wing-centerline
+  // height so the empennage reads as flush with the wing plane.
+  const stab = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.16, 1.0), mat(OLIVE));
+  stab.position.set(0, -0.20, 4.0);
+  g.add(stab);
+
+  // Bubble canopy.
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
+  );
+  canopy.position.set(0, 0.60, -2.6);
+  canopy.scale.set(0.85, 1.0, 1.6);
+  g.add(canopy);
+
+  return g;
+}
+
+// ---------- F-16 Falcon ----------
+// Slim single-engine fighter with a single belly intake under the cockpit,
+// bubble canopy, cropped delta wings blended into the fuselage.
+function buildF16(THREE) {
+  const g = new THREE.Group();
+  const GREY = 0x8a8e96, DARK = 0x5b5f66, STEEL = 0x40434a, EXH = 0x111111, CANOPY = 0x2a3a44;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.85, 8.2), mat(GREY));
+  g.add(body);
+  // Pointed radar nose.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.40, 1.5, 10), mat(GREY));
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -4.85;
+  g.add(nose);
+
+  // Distinctive belly intake — single big "shark mouth" under the cockpit.
+  const intake = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 1.6), mat(DARK));
+  intake.position.set(0, -0.65, -1.8);
+  g.add(intake);
+  const intakeHole = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.45), mat(0x111111));
+  intakeHole.position.set(0, -0.65, -2.61);
+  intakeHole.rotation.y = Math.PI;
+  g.add(intakeHole);
+
+  // Cropped delta wings blended into the fuselage. Same shape-space
+  // convention as the SR-71 above: shape +Y → world -Z (forward), so the
+  // leading edge sits at positive Y and the trailing edge at negative Y.
+  // Vertex order is CCW (root LE → root TE → tip TE → tip LE) so
+  // ExtrudeGeometry produces outward-facing normals.
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0.0,  1.6);     // root leading (forward)
+  wingShape.lineTo(0.0, -2.0);     // root trailing (back)
+  wingShape.lineTo(4.6, -2.2);     // tip trailing
+  wingShape.lineTo(4.6, -1.4);     // tip leading (back, outboard)
+  wingShape.lineTo(0.0,  1.6);
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.18, bevelEnabled: false });
+  for (const side of [-1, 1]) {
+    const w = new THREE.Mesh(wingGeo, mat(DARK));
+    w.scale.x = side;
+    w.position.set(0, -0.10, 0);
+    w.rotation.x = -Math.PI / 2;
+    g.add(w);
+  }
+
+  // Big bubble canopy (signature F-16 — no centre frame, one-piece).
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.50, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
+  );
+  canopy.position.set(0, 0.55, -1.4);
+  canopy.scale.set(0.85, 1.05, 2.2);
+  g.add(canopy);
+
+  // Single vertical tail — trapezoid with a swept-back leading edge so
+  // the fin reads as a real shape rather than a vertical slab. Same
+  // construction as the F-4 fin: shape in (chord, height), rotated -π/2
+  // around Y so chord lands on world Z and extrude depth lands on world X.
+  const f16FinShape = new THREE.Shape();
+  f16FinShape.moveTo(-0.55, 0.0);
+  f16FinShape.lineTo( 0.80, 0.0);
+  f16FinShape.lineTo( 0.80, 1.7);
+  f16FinShape.lineTo( 0.30, 1.7);
+  f16FinShape.lineTo(-0.55, 0.0);
+  const f16FinGeo = new THREE.ExtrudeGeometry(f16FinShape, { depth: 0.14, bevelEnabled: false });
+  const fin = new THREE.Mesh(f16FinGeo, mat(GREY));
+  fin.rotation.y = -Math.PI / 2;
+  fin.position.set(0.07, 0.10, 3.0);
+  g.add(fin);
+  // Horizontal stabilators.
+  const stabGeo = new THREE.BoxGeometry(2.6, 0.15, 1.0);
+  for (const side of [-1, 1]) {
+    const s = new THREE.Mesh(stabGeo, mat(DARK));
+    s.position.set(side * 1.3, 0.0, 3.5);
+    s.rotation.y = side * -0.22;
+    g.add(s);
+  }
+
+  // Single exhaust nozzle.
+  const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.40, 0.55, 12), mat(STEEL));
+  ex.rotation.x = Math.PI / 2;
+  ex.position.z = 4.4;
+  g.add(ex);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.38, 12), mat(EXH));
+  hole.rotation.y = Math.PI;
+  hole.position.z = 4.71;
+  g.add(hole);
+
+  return g;
+}
+
+// ---------- F-18 Hornet ----------
+// Twin-engine carrier fighter with leading-edge extensions (LEX) flanking
+// the cockpit, swept wings, twin canted tails.
+function buildF18(THREE) {
+  const g = new THREE.Group();
+  const GREY = 0x9aa0a8, DARK = 0x6e747c, CANOPY = 0x2a3340, STEEL = 0x46474d, EXH = 0x141414;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.95, 8.6), mat(GREY));
+  g.add(body);
+  // Conical radar nose.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.6, 10), mat(GREY));
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -5.1;
+  g.add(nose);
+
+  // LEX (leading edge extensions) — triangular plates flanking the cockpit.
+  // The F-18's most distinctive silhouette feature.
+  const lexShape = new THREE.Shape();
+  lexShape.moveTo(0.0, -3.4);   // sharp forward tip at the cockpit
+  lexShape.lineTo(1.4,  0.4);   // wide attachment at the wing root
+  lexShape.lineTo(0.2,  0.5);
+  lexShape.lineTo(0.0, -3.4);
+  const lexGeo = new THREE.ExtrudeGeometry(lexShape, { depth: 0.12, bevelEnabled: false });
+  for (const side of [-1, 1]) {
+    const lex = new THREE.Mesh(lexGeo, mat(DARK));
+    lex.scale.x = side;
+    lex.position.set(side * 0.6, 0.15, 0);
+    lex.rotation.x = -Math.PI / 2;
+    g.add(lex);
+  }
+
+  // Twin side intakes under the LEX.
+  for (const sx of [-0.85, 0.85]) {
+    const intake = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.65, 1.4), mat(DARK));
+    intake.position.set(sx, -0.25, -1.0);
+    g.add(intake);
+  }
+
+  // Trapezoidal swept wings — pulled in toward the fuselage so the LEX
+  // plates flow naturally into the wing leading edge with no visible gap.
+  const wingGeo = new THREE.BoxGeometry(4.8, 0.20, 3.0);
+  const sweep = -28 * Math.PI / 180;
+  for (const side of [-1, 1]) {
+    const w = new THREE.Mesh(wingGeo, mat(DARK));
+    w.position.set(side * 2.3, -0.05, 0.7);
+    w.rotation.y = side * sweep;
+    g.add(w);
+  }
+
+  // Long bubble canopy.
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.52, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
+  );
+  canopy.position.set(0, 0.60, -1.5);
+  canopy.scale.set(0.85, 1.0, 2.2);
+  g.add(canopy);
+
+  // Twin canted tails — trapezoid with swept-back leading edge, then
+  // canted outward at the top. (Further out + more cant than the F-15;
+  // F-18 trademark.) Same shape-in-chord-height pattern as the F-4 / F-16
+  // fin; Ry orients vertical, Rz cants outward. Rotation order 'XZY' makes
+  // Three.js apply Ry FIRST (orienting the fin) and Rz second (canting it
+  // around the world Z axis, i.e. the fuselage forward-back axis), instead
+  // of the default which would smear the cant into the un-oriented shape.
+  const f18FinShape = new THREE.Shape();
+  f18FinShape.moveTo(-0.50, 0.0);
+  f18FinShape.lineTo( 0.70, 0.0);
+  f18FinShape.lineTo( 0.70, 1.4);
+  f18FinShape.lineTo( 0.25, 1.4);
+  f18FinShape.lineTo(-0.50, 0.0);
+  const f18FinGeo = new THREE.ExtrudeGeometry(f18FinShape, { depth: 0.12, bevelEnabled: false });
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(f18FinGeo, mat(DARK));
+    fin.position.set(side * 0.85, 0.85, 2.9);
+    fin.rotation.order = 'XZY';
+    fin.rotation.y = -Math.PI / 2;
+    fin.rotation.z = side * -0.32;
+    g.add(fin);
+  }
+  // Horizontal stabs.
+  const stabGeo = new THREE.BoxGeometry(2.4, 0.14, 1.0);
+  for (const side of [-1, 1]) {
+    const s = new THREE.Mesh(stabGeo, mat(DARK));
+    s.position.set(side * 1.2, -0.05, 3.7);
+    s.rotation.y = side * sweep * 0.7;
+    g.add(s);
+  }
+
+  // Twin closely-spaced exhausts.
+  for (const sx of [-0.35, 0.35]) {
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.32, 0.55, 10), mat(STEEL));
+    ex.rotation.x = Math.PI / 2;
+    ex.position.set(sx, -0.05, 4.4);
+    g.add(ex);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.30, 12), mat(EXH));
+    hole.rotation.y = Math.PI;
+    hole.position.set(sx, -0.05, 4.71);
+    g.add(hole);
+  }
+
+  return g;
+}
+
+// ---------- Card list ----------
+const PLANES = [
+  { name: 'P-51 MUSTANG', desc: 'WW2 escort fighter. In-line V-12 Merlin → long nose; bubble canopy aft of the wings; belly radiator scoop.', build: buildP51 },
+  { name: 'F-4 PHANTOM', desc: 'Twin-engine 1960s heavy fighter. Swept wings with kinked anhedral outer panels, down-tilted horizontal stabs.', build: buildF4 },
+  { name: 'SR-71 BLACKBIRD', desc: 'Mach-3 recon. Long thin fuselage with chines blending into delta wings, huge engine nacelles, twin canted tails.', build: buildSR71 },
+  { name: 'A-10 WARTHOG', desc: 'CAS attack plane. Engines mounted HIGH on the rear fuselage, long straight wings, twin tails, big nose cannon barrel.', build: buildA10 },
+  { name: 'F-16 FALCON', desc: 'Single-engine 4th-gen fighter. Single belly "shark mouth" intake, big one-piece bubble canopy, cropped delta wings.', build: buildF16 },
+  { name: 'F-18 HORNET', desc: 'Twin-engine carrier fighter. Sharp LEX plates flanking the cockpit, twin sharply-canted tails, twin close-set nozzles.', build: buildF18 },
+];
+
+// ---------- Render each card ----------
+const animators = [];
+
+for (const planeSpec of PLANES) {
+  // Wrap each plane's build in try/catch so one broken builder doesn't take
+  // the rest of the grid down with it. Failures render an inline diagnostic
+  // card so we know which plane to investigate.
+  let planeMesh = null;
+  let buildError = null;
+  try {
+    planeMesh = planeSpec.build(THREE);
+  } catch (err) {
+    buildError = err;
+    console.error('[plane-mockups]', planeSpec.name, 'build failed:', err);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <canvas></canvas>
+    <div class="meta">
+      <div class="name">${planeSpec.name}</div>
+      <div class="desc">${buildError
+        ? `<span style="color:#ff7070">BUILD FAILED: ${String(buildError.message || buildError).replace(/</g, '&lt;')}</span>`
+        : planeSpec.desc}</div>
+    </div>
+  `;
+  grid.appendChild(card);
+
+  if (!planeMesh) continue;
+
+  const canvas = card.querySelector('canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x202428, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+  sun.position.set(6, 10, 7);
+  scene.add(sun);
+
+  const turntable = new THREE.Group();
+  scene.add(turntable);
+  turntable.add(planeMesh);
+
+  const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 200);
+  cam.position.set(14, 8, 14);
+  cam.lookAt(0, 0, 0);
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    renderer.setSize(rect.width, rect.width, false);
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+
+  animators.push((dt) => {
+    turntable.rotation.y += dt * 0.55;
+    renderer.render(scene, cam);
+  });
+}
+
+let lastT = performance.now();
+function loop() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  for (const a of animators) a(dt);
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
