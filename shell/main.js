@@ -9,6 +9,7 @@ import { RemotePlayers } from '../lib/multiplayer/remote-players.js';
 import { WingContrail } from '../lib/plane/contrails.js';
 import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
+import { CrashDebris }  from '../lib/plane/crash-debris.js';
 import { loadLastVisitPos } from '../lib/poi/markers.js';
 import { crashed, clampToCeiling, CEILING } from '../lib/game/collision.js';
 import { StateMachine } from '../lib/game/state.js';
@@ -343,6 +344,13 @@ const scoreTracker = new ScoreTracker();
 const remotePlayers = new RemotePlayers(THREE, worldScene);
 let mpRoom = null;
 
+// Crash-debris effect — instantiated once and reused per crash. start()
+// disassembles worldPlaneMesh into its children (each becomes a tumbling
+// piece with an attached flame sprite) and triggers an expanding shell
+// at the impact point; dispose() cleans up before MENU rebuilds the
+// plane via setWorldPlane.
+const crashDebris = new CrashDebris(THREE, worldScene);
+
 // --- Active scene selector — switched by state machine on enter ---
 let activeScene = menuScene;
 let activeCam = menuCam;
@@ -591,12 +599,30 @@ const sm = new StateMachine({
       enter() {
         activeScene = worldScene; activeCam = worldCam;
         clearUI();
+        // Engine-exhaust cones are attached to worldPlaneMesh and would
+        // otherwise be detached + flung as debris. Dispose them first so
+        // only structural plane parts become wreckage.
+        for (const f of flameCones) f.dispose();
+        flameCones.length = 0;
+        // Disassemble the plane mesh into tumbling pieces. After this
+        // call, worldPlaneMesh is an empty Group — we rebuild it in
+        // exit() via setWorldPlane.
+        crashDebris.start(worldPlaneMesh, physics);
         activeUI = buildCrashOverlay({
-          root: uiRoot, durationMs: 1500,
+          root: uiRoot, durationMs: 3000,
           onComplete: () => sm.setState('MENU'),
         });
       },
-      update() { /* frozen frame */ },
+      update(dt) {
+        crashDebris.update(dt, terrain);
+      },
+      exit() {
+        crashDebris.dispose();
+        // Rebuild worldPlaneMesh + contrails + flame cones now that the
+        // wreckage has been cleaned up. setWorldPlane disposes the
+        // empty group from the previous flight and creates a fresh one.
+        setWorldPlane(currentPlane);
+      },
     },
   },
 });
@@ -650,7 +676,7 @@ requestAnimationFrame(() => {
       if (!mp || typeof mp.quickMatch !== 'function') return;
       mp.on('game',       (from, data) => remotePlayers.onPeerState(from, data));
       mp.on('playerLeft', (data) => remotePlayers.onPeerLeft(data.userId));
-      mp.quickMatch({ maxPlayers: 32 })
+      mp.quickMatch({ maxPlayers: 16 })
         .then((room) => { mpRoom = room; })
         .catch(() => { /* offline / quota — silently no-op */ });
     });
