@@ -5,6 +5,7 @@ import { PlanePhysics, DragInput } from '../lib/plane/controller.js';
 import { ChaseCamera } from '../lib/plane/camera.js';
 import { ScoreTracker } from '../lib/game/score.js';
 import { UnlockState }  from '../lib/game/unlocks.js';
+import { RemotePlayers } from '../lib/multiplayer/remote-players.js';
 import { WingContrail } from '../lib/plane/contrails.js';
 import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
@@ -80,7 +81,11 @@ menuSun.position.set(8, 12, 8);
 menuScene.add(menuSun);
 const menuCam = new THREE.PerspectiveCamera(30, 9/16, 0.1, 100);
 menuCam.position.set(16.25, 6.25, 16.25);
-menuCam.lookAt(0, 0.3, 0);
+// lookAt below the plane center (which sits around y=0.5) tilts the
+// camera upward so the plane visual sits in the upper half of the screen.
+// This frees space below for the name + stats + FLY button to spread
+// without crowding into the plane preview.
+menuCam.lookAt(0, -1.5, 0);
 
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -334,6 +339,15 @@ const input = new DragInput(canvas);
 // for the whole session.
 const scoreTracker = new ScoreTracker();
 
+// Multiplayer presence — autojoins a public room on PlaySDK ready (see
+// the .onReady wiring at the bottom of this file). Renders remote planes
+// into worldScene as their position packets arrive; no collision, no
+// scoring interaction. mpRoom is null until quickMatch resolves (or stays
+// null if PlaySDK / multiplayer is unavailable, e.g. local dev). The HUD
+// reads remotePlayers.count() to show the pilot-online indicator.
+const remotePlayers = new RemotePlayers(THREE, worldScene);
+let mpRoom = null;
+
 // --- Active scene selector — switched by state machine on enter ---
 let activeScene = menuScene;
 let activeCam = menuCam;
@@ -358,11 +372,23 @@ function updatePlaneShadow() {
 // 'town' | …) so the HUD can label it correctly. Empty object when the
 // registry has no villages so the HUD hides the marker.
 function computeVillageNav(terrain, physics) {
-  if (!terrain.nearestVillage) return {};
-  const nv = terrain.nearestVillage(physics.x, physics.z);
-  if (!nv) return {};
-  const dx = nv.x - physics.x;
-  const dz = nv.z - physics.z;
+  if (!terrain.villageRegistry) return {};
+  // Scan for the nearest UNVISITED POI. Once a POI has been flown through
+  // the player's already found it, so the compass arrow points past it to
+  // the next discovery. When every POI is found, the arrow hides entirely.
+  const all = terrain.villageRegistry.all;
+  const markers = terrain.markers;
+  let best = null;
+  let bestD2 = Infinity;
+  for (let i = 0; i < all.length; i++) {
+    const v = all[i];
+    if (markers && markers.isVisited(`v:${v.id}`)) continue;
+    const d2 = (v.x - physics.x) ** 2 + (v.z - physics.z) ** 2;
+    if (d2 < bestD2) { bestD2 = d2; best = v; }
+  }
+  if (!best) return {};
+  const dx = best.x - physics.x;
+  const dz = best.z - physics.z;
   // World bearing convention: 0 when target is along the plane's spawn-forward
   // axis (−Z). atan2(dx, −dz) maps +X to +π/2 so a village on the right reads
   // as a +π/2 rotation, which matches CSS rotate() (CW positive).
@@ -372,12 +398,11 @@ function computeVillageNav(terrain, physics) {
   // Normalize to (-π, π]
   while (bearing > Math.PI)  bearing -= 2 * Math.PI;
   while (bearing <= -Math.PI) bearing += 2 * Math.PI;
-  const villageVisited = !!(terrain.markers && terrain.markers.isVisited(`v:${nv.id}`));
   return {
     villageBearing: bearing,
-    villageDistance: nv.distance,
-    villageType: nv.templateKey,
-    villageVisited,
+    villageDistance: Math.sqrt(bestD2),
+    villageType: best.templateKey,
+    villageVisited: false,
   };
 }
 
@@ -464,6 +489,17 @@ const sm = new StateMachine({
         worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
         worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
         if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * physics.speed * 0.5;
+        // Multiplayer: interpolate visible peers + broadcast our own state
+        // at ~10 Hz. Throttling here (not per frame) keeps the wire rate
+        // independent of fps so a 144 Hz monitor doesn't flood the room.
+        remotePlayers.update();
+        if (mpRoom && remotePlayers.shouldBroadcast(dt)) {
+          mpRoom.send({
+            plane: currentPlane,
+            x: physics.x, y: physics.y, z: physics.z,
+            qx: physics.quat.x, qy: physics.quat.y, qz: physics.quat.z, qw: physics.quat.w,
+          });
+        }
         chase.update(physics, dt);
         terrain.update(worldCam.position);
         applyBiome(physics.x, physics.z);
@@ -542,10 +578,15 @@ const sm = new StateMachine({
           planeZ: physics.z,
           heading: planeHeading,
           visitedPois,
+          pilots: mpRoom ? remotePlayers.count() : -1,
           ...vNav,
         });
         flyingCountdown -= dt;
-        if (crashed(physics, terrain, physics.cfg.collisionRadius * WORLD_PLANE_SCALE)) {
+        if (crashed(
+          physics, terrain,
+          physics.cfg.collisionRadius * WORLD_PLANE_SCALE,
+          physics.cfg.vertRadius       * WORLD_PLANE_SCALE,
+        )) {
           sm.setState('CRASH');
         }
       },
@@ -603,8 +644,20 @@ window.addEventListener('pagehide', () => scoreTracker.saveNow());
 
 requestAnimationFrame(() => {
   // PlaySDK uses a Proxy that throws on unknown property access; calling
-  // .onReady(cb) is the actual ready-signal API.
+  // .onReady(cb) is the actual ready-signal API. Once ready we autojoin a
+  // public room via quickMatch for the "see other pilots" presence
+  // feature. quickMatch joins an existing public room if any has space,
+  // or creates a fresh one — so a solo player isn't stranded waiting for
+  // someone else to host.
   if (window.PlaySDK && typeof window.PlaySDK.onReady === 'function') {
-    window.PlaySDK.onReady(() => {});
+    window.PlaySDK.onReady(() => {
+      const mp = window.PlaySDK.multiplayer;
+      if (!mp || typeof mp.quickMatch !== 'function') return;
+      mp.on('game',       (from, data) => remotePlayers.onPeerState(from, data));
+      mp.on('playerLeft', (data) => remotePlayers.onPeerLeft(data.userId));
+      mp.quickMatch({ maxPlayers: 32 })
+        .then((room) => { mpRoom = room; })
+        .catch(() => { /* offline / quota — silently no-op */ });
+    });
   }
 });

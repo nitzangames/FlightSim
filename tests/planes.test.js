@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PLANES, PLANE_ORDER } from '../lib/game/planes.js';
 
-const STAT_KEYS = ['maxSpeed', 'maxPitchRate', 'maxYawRate', 'fuelDrainRate', 'maxFuel', 'collisionRadius'];
+const STAT_KEYS = ['maxSpeed', 'maxPitchRate', 'maxYawRate', 'fuelDrainRate', 'maxFuel', 'collisionRadius', 'vertRadius'];
 
 describe('PLANES roster', () => {
   it('contains exactly the expected keys', () => {
