@@ -26,21 +26,16 @@ const boot = document.getElementById('boot');
 const uiRoot = document.getElementById('ui-root');
 
 // --- localStorage keys ---
-const LS_SEED  = 'flightsim.seed';
 const LS_PLANE = 'flightsim.plane';
 
-function readOrMintSeed() {
-  const cached = localStorage.getItem(LS_SEED);
-  if (cached !== null) {
-    const n = parseInt(cached, 10);
-    if (Number.isFinite(n)) return n | 0;
-  }
-  const s = (Math.random() * 0xFFFFFFFF) | 0;
-  localStorage.setItem(LS_SEED, String(s));
-  return s;
-}
-
-const seed = readOrMintSeed();
+// Shared world seed — every player generates the same procedural terrain
+// + POI layout so multiplayer presence is meaningful (you and another
+// pilot fly over the same villages, can rendezvous at the same castle).
+// The actual integer is arbitrary; picked once and frozen — changing it
+// would re-shuffle everyone's world and invalidate any landmark a player
+// has memorised. The old per-player `flightsim.seed` localStorage entry
+// is intentionally ignored; it can stay in storage harmlessly.
+const seed = 0x46534D31;
 const unlockState = new UnlockState();
 // Defensive: if the saved plane key is corrupt or refers to a plane that
 // hasn't been unlocked yet (e.g., player cleared unlock storage but kept
