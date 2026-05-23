@@ -4,6 +4,7 @@ import { PLANES } from '../lib/game/planes.js';
 import { PlanePhysics, DragInput } from '../lib/plane/controller.js';
 import { ChaseCamera } from '../lib/plane/camera.js';
 import { ScoreTracker } from '../lib/game/score.js';
+import { UnlockState }  from '../lib/game/unlocks.js';
 import { WingContrail } from '../lib/plane/contrails.js';
 import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
@@ -39,7 +40,15 @@ function readOrMintSeed() {
 }
 
 const seed = readOrMintSeed();
+const unlockState = new UnlockState();
+// Defensive: if the saved plane key is corrupt or refers to a plane that
+// hasn't been unlocked yet (e.g., player cleared unlock storage but kept
+// the selection), fall back to the always-free biplane so the player
+// always boots into something they can actually fly.
 let currentPlane = localStorage.getItem(LS_PLANE) || 'biplane';
+if (!PLANES[currentPlane] || !unlockState.isUnlocked(currentPlane)) {
+  currentPlane = 'biplane';
+}
 const currentStyle = 'cartograph';
 
 // Loading-screen helpers: setBootPhase updates the small grey caption under
@@ -70,7 +79,7 @@ const menuSun = new THREE.DirectionalLight(0xffffff, 1.0);
 menuSun.position.set(8, 12, 8);
 menuScene.add(menuSun);
 const menuCam = new THREE.PerspectiveCamera(30, 9/16, 0.1, 100);
-menuCam.position.set(13, 5, 13);
+menuCam.position.set(16.25, 6.25, 16.25);
 menuCam.lookAt(0, 0.3, 0);
 
 function resize() {
@@ -383,6 +392,7 @@ const sm = new StateMachine({
         activeUI = buildMenu({
           THREE, root: uiRoot, menuScene, version: VERSION,
           currentPlane,
+          scoreTracker, unlockState,
           onPlaneChange: (key) => {
             if (key === currentPlane) return;
             currentPlane = key;
@@ -474,6 +484,10 @@ const sm = new StateMachine({
         // the ~0.4s after the 3/2/1 sequence ends.
         const vNav = computeVillageNav(terrain, physics);
         const flash = terrain.markers ? terrain.markers.consumeFlash() : null;
+        if (terrain.markers) {
+          const discoveries = terrain.markers.consumeDiscoveries();
+          for (let i = 0; i < discoveries.length; i++) scoreTracker.awardDiscovery();
+        }
         const score = scoreTracker.update(physics, terrain, dt);
         // Minimap data: every visited landmark's xz + type, plus the
         // plane's xz and heading. The HUD does the drawing.
