@@ -34,6 +34,22 @@ describe('crashed (upright)', () => {
   });
 });
 
+describe('crashed (water)', () => {
+  // Water sits at y=0. When terrain dips below that (lake/ocean bed),
+  // the crash check should treat the water surface as the floor — flying
+  // into a lake at y<1 should still crash even though the seabed is way
+  // below the plane.
+  it('crashes when within vertRadius of water surface, even with deep seabed', () => {
+    expect(crashed(plane(0.5), terrainAt(-80), 5, 1.2)).toBe(true);
+    expect(crashed(plane(1.0), terrainAt(-80), 5, 1.2)).toBe(true);   // exactly at threshold
+  });
+
+  it('does not crash when high enough above water', () => {
+    expect(crashed(plane(2.0), terrainAt(-80), 5, 1.2)).toBe(false);
+    expect(crashed(plane(50),  terrainAt(-80), 5, 1.2)).toBe(false);
+  });
+});
+
 describe('crashed (orientation-aware)', () => {
   // The whole point of the new collision: an inverted plane should clear
   // the ground at the SAME altitude as upright — using vertRadius, not the

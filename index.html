@@ -11,13 +11,27 @@
       overflow: hidden; background: #000;
       display: flex; align-items: center; justify-content: center;
     }
+    /* Portrait + tall phones: fill the whole screen, no letterbox.
+       The game UI sizes via container query units (cqi) so it scales
+       to whatever aspect the device provides — modern phones are
+       9:19.5 or taller, and the old 9:16 lock was leaving big black
+       bars top/bottom. */
     #stage {
       position: relative;
-      aspect-ratio: 9 / 16;
-      max-width: 100vw;
-      max-height: 100vh;
+      width: 100vw;
       height: 100vh;
       container-type: size;
+    }
+    /* Landscape / desktop: keep a 9:16 portrait box centered so the
+       game doesn't render as an ultrawide canvas on a monitor. The
+       media query matches any screen wider than 9:16, which is every
+       non-portrait device. */
+    @media (min-aspect-ratio: 9 / 16) {
+      #stage {
+        width: auto;
+        aspect-ratio: 9 / 16;
+        max-width: 100vw;
+      }
     }
     canvas {
       display: block; width: 100%; height: 100%;
