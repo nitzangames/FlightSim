@@ -55,14 +55,14 @@ describe('PLANES roster', () => {
   it('unlock prices match the agreed economy', () => {
     expect(PLANES.biplane.unlock).toEqual({ kind: 'free' });
     expect(PLANES.triplane.unlock).toEqual({ kind: 'stars',  amount: 1000   });
-    expect(PLANES.ww2.unlock     ).toEqual({ kind: 'stars',  amount: 5000   });
-    expect(PLANES.p51.unlock     ).toEqual({ kind: 'stars',  amount: 10000  });
-    expect(PLANES.f86.unlock     ).toEqual({ kind: 'stars',  amount: 20000  });
-    expect(PLANES.f4.unlock      ).toEqual({ kind: 'stars',  amount: 35000  });
-    expect(PLANES.a10.unlock     ).toEqual({ kind: 'stars',  amount: 50000  });
-    expect(PLANES.f16.unlock     ).toEqual({ kind: 'stars',  amount: 70000  });
-    expect(PLANES.f18.unlock     ).toEqual({ kind: 'stars',  amount: 85000  });
-    expect(PLANES.f15.unlock     ).toEqual({ kind: 'stars',  amount: 100000 });
+    expect(PLANES.ww2.unlock     ).toEqual({ kind: 'stars',  amount: 2000   });
+    expect(PLANES.p51.unlock     ).toEqual({ kind: 'stars',  amount: 5000   });
+    expect(PLANES.f86.unlock     ).toEqual({ kind: 'stars',  amount: 10000  });
+    expect(PLANES.f4.unlock      ).toEqual({ kind: 'stars',  amount: 17500  });
+    expect(PLANES.a10.unlock     ).toEqual({ kind: 'stars',  amount: 25000  });
+    expect(PLANES.f16.unlock     ).toEqual({ kind: 'stars',  amount: 35000  });
+    expect(PLANES.f18.unlock     ).toEqual({ kind: 'stars',  amount: 42500  });
+    expect(PLANES.f15.unlock     ).toEqual({ kind: 'stars',  amount: 50000  });
     expect(PLANES.f22.unlock     ).toEqual({ kind: 'nbucks', amount: 200    });
     expect(PLANES.sr71.unlock    ).toEqual({ kind: 'nbucks', amount: 300    });
   });
