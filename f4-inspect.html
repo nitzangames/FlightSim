@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>F-4 Wing Inspect</title>
+  <title>F-4 Inspect</title>
   <style>
     html, body { margin:0; padding:0; background:#11161e; color:#cfd8e0; font:14px ui-monospace,monospace; }
     .row { display:flex; gap:8px; padding:8px; }
@@ -15,94 +15,23 @@
 <body>
 <div class="row">
   <div class="v"><canvas id="cv-top"></canvas><div class="lbl">TOP (looking down)</div></div>
+  <div class="v"><canvas id="cv-side"></canvas><div class="lbl">SIDE (looking +X)</div></div>
+  <div class="v"><canvas id="cv-iso"></canvas><div class="lbl">ISO (3/4 front-right)</div></div>
+</div>
+<div class="row">
+  <div class="v"><canvas id="cv-bottom"></canvas><div class="lbl">BOTTOM (looking up)</div></div>
   <div class="v"><canvas id="cv-front"></canvas><div class="lbl">FRONT (looking +Z)</div></div>
-  <div class="v"><canvas id="cv-iso"></canvas><div class="lbl">ISO (45° elevation)</div></div>
+  <div class="v"><canvas id="cv-rear"></canvas><div class="lbl">REAR (looking -Z)</div></div>
 </div>
 <script type="module">
-const mat = (c) => new THREE.MeshPhongMaterial({ color: c, flatShading: true, shininess: 0 });
-
-// ----- F-4 builder (copy of plane-mockups.html, isolated for inspection) -----
-function buildF4(THREE) {
-  const g = new THREE.Group();
-  const GREEN = 0x4a5040, BROWN = 0x6b5538, DARK = 0x3a3a36, CANOPY = 0x2a3340, STEEL = 0x40434a, EXH = 0x111111;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.05, 9.5), mat(GREEN));
-  g.add(body);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 10), mat(BROWN));
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.z = -5.95;
-  g.add(nose);
-  const intakeGeo = new THREE.BoxGeometry(0.55, 0.7, 1.6);
-  for (const sx of [-0.85, 0.85]) {
-    const intake = new THREE.Mesh(intakeGeo, mat(DARK));
-    intake.position.set(sx, -0.2, -1.0);
-    g.add(intake);
-  }
-  const wingRoot = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 2.6), mat(GREEN));
-  wingRoot.position.set(0, -0.20, -1.2);
-  g.add(wingRoot);
-  const sweep = -32 * Math.PI / 180;
-  const KINK = 1.9;
-  const innerShape = new THREE.Shape();
-  innerShape.moveTo(0.0,    1.0);
-  innerShape.lineTo(0.0,   -1.3);
-  innerShape.lineTo(KINK,  -1.85);
-  innerShape.lineTo(KINK,  -0.30);
-  innerShape.lineTo(0.0,    1.0);
-  const innerGeo = new THREE.ExtrudeGeometry(innerShape, { depth: 0.18, bevelEnabled: false });
-  const outerShape = new THREE.Shape();
-  outerShape.moveTo(0.0,  -0.30);
-  outerShape.lineTo(0.0,  -1.85);
-  outerShape.lineTo(1.9,  -2.40);
-  outerShape.lineTo(1.9,  -1.60);
-  outerShape.lineTo(0.0,  -0.30);
-  const outerGeo = new THREE.ExtrudeGeometry(outerShape, { depth: 0.18, bevelEnabled: false });
-  for (const side of [-1, 1]) {
-    const inner = new THREE.Mesh(innerGeo, mat(BROWN));
-    inner.scale.x = side;
-    inner.position.set(side * 0.75, -0.27, -1.05);
-    inner.rotation.x = -Math.PI / 2;
-    g.add(inner);
-    const outer = new THREE.Mesh(outerGeo, mat(GREEN));
-    outer.scale.x = side;
-    outer.position.set(side * (0.75 + KINK), -0.27, -1.05);
-    outer.rotation.order = 'ZYX';
-    outer.rotation.x = -Math.PI / 2;
-    outer.rotation.z = side * 0.40;
-    g.add(outer);
-  }
-  const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.50, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(CANOPY),
-  );
-  canopy.position.set(0, 0.60, -1.5);
-  canopy.scale.set(0.85, 1.0, 3.0);
-  g.add(canopy);
-  const finShape = new THREE.Shape();
-  finShape.moveTo(-0.6, 0.0);
-  finShape.lineTo( 0.9, 0.0);
-  finShape.lineTo( 0.9, 1.7);
-  finShape.lineTo( 0.3, 1.7);
-  finShape.lineTo(-0.6, 0.0);
-  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.14, bevelEnabled: false });
-  const fin = new THREE.Mesh(finGeo, mat(BROWN));
-  fin.rotation.y = -Math.PI / 2;
-  fin.position.set(0.07, 0.10, 3.3);
-  g.add(fin);
-  const stabGeo = new THREE.BoxGeometry(2.6, 0.15, 1.1);
-  for (const side of [-1, 1]) {
-    const s = new THREE.Mesh(stabGeo, mat(BROWN));
-    s.position.set(side * 1.4, -0.1, 3.6);
-    s.rotation.y = side * (-32 * Math.PI / 180) * 0.6;
-    s.rotation.z = side * 0.18;
-    g.add(s);
-  }
-  return g;
-}
+import { buildF4 } from './lib/plane/f4.js';
 
 function makeView(canvasId, camPos, lookAt = [0, 0, 0]) {
   const canvas = document.getElementById(canvasId);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(2);
-  renderer.setSize(canvas.clientWidth || 500, canvas.clientWidth || 500, false);
+  const sz = canvas.clientWidth || 500;
+  renderer.setSize(sz, sz, false);
   renderer.setClearColor(0x0a0e14);
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x202428, 0.85));
@@ -111,15 +40,18 @@ function makeView(canvasId, camPos, lookAt = [0, 0, 0]) {
   scene.add(sun);
   const plane = buildF4(THREE);
   scene.add(plane);
-  const cam = new THREE.OrthographicCamera(-9, 9, 9, -9, 0.1, 200);
+  const cam = new THREE.OrthographicCamera(-7, 7, 7, -7, 0.1, 200);
   cam.position.set(...camPos);
   cam.lookAt(...lookAt);
   renderer.render(scene, cam);
 }
 
-makeView('cv-top',   [0, 30, 0]);     // top-down
-makeView('cv-front', [0, 0, -30]);    // looking at nose from front
-makeView('cv-iso',   [22, 18, -22]);  // iso 3/4 from front-right
+makeView('cv-top',    [0, 30, 0]);
+makeView('cv-side',   [30, 0, 0]);
+makeView('cv-iso',    [22, 18, -22]);
+makeView('cv-bottom', [0, -30, 0]);
+makeView('cv-front',  [0, 0, -30]);
+makeView('cv-rear',   [0, 0, 30]);
 </script>
 </body>
 </html>
