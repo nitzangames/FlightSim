@@ -193,14 +193,19 @@ const planeShadow = new PlaneShadow(THREE, worldScene);
 // the plane's longitudinal centre, so contrails from the fallback emit
 // well in front of where the wing edge actually is.
 const PLANE_CONTRAIL_TIPS = {
+  // Biplane (Fairey Flycatcher rebuild): racetrack wings, span 8.5 lower,
+  // 9.0 upper. Tip mid-chord at world (±halfSpan, position.y+thickness/2,
+  // position.z).
   biplane: [
-    { x: -3.5, y: -0.25, z: -1.20 }, { x:  3.5, y: -0.25, z: -1.20 },  // lower wing
-    { x: -3.7, y:  1.10, z: -1.50 }, { x:  3.7, y:  1.10, z: -1.50 },  // upper wing
+    { x: -4.25, y: -0.25, z: -1.20 }, { x:  4.25, y: -0.25, z: -1.20 },  // lower wing (span 8.5)
+    { x: -4.50, y:  1.10, z: -1.50 }, { x:  4.50, y:  1.10, z: -1.50 },  // upper wing (span 9.0)
   ],
+  // Triplane (Fokker Dr.I rebuild): racetrack wings, spans 7.0 top, 6.8
+  // mid, 6.4 bot. Tip mid-chord at world (±halfSpan, position.y+0.08, position.z).
   triplane: [
-    { x: -3.0, y:  1.50, z: -1.10 }, { x:  3.0, y:  1.50, z: -1.10 },  // top wing
-    { x: -3.0, y:  0.55, z: -1.05 }, { x:  3.0, y:  0.55, z: -1.05 },  // middle wing
-    { x: -2.8, y: -0.40, z: -1.00 }, { x:  2.8, y: -0.40, z: -1.00 },  // bottom wing
+    { x: -3.50, y:  1.58, z: -1.10 }, { x:  3.50, y:  1.58, z: -1.10 },  // top wing
+    { x: -3.40, y:  0.63, z: -1.05 }, { x:  3.40, y:  0.63, z: -1.05 },  // middle wing
+    { x: -3.20, y: -0.40, z: -1.00 }, { x:  3.20, y: -0.40, z: -1.00 },  // bottom wing
   ],
   // Spitfire's elliptical wing: SPAN=11 → tips at ±5.5. Wing shape is
   // built in XY then rotated -π/2 around X and translated by (0,-0.45,-1.3),
@@ -225,11 +230,11 @@ const PLANE_CONTRAIL_TIPS = {
   f86: [
     { x: -3.8, y: -0.16, z: 1.41 }, { x: 3.8, y: -0.16, z: 1.41 },
   ],
-  // F-4 outer panel: inner-wing position (±0.75, -0.50, -1.05), outer
-  // panel root at world X=±2.65, KINK=1.9 + outer span 3.6 → tip mid-chord
-  // at world (±6.5, -0.4, +0.8) after the 12° pseudo-dihedral.
+  // F-4 outer panel: shape +Y → world -Z (forward) after Rx(-π/2), then
+  // Rz(±0.21) rotates shape +X partly into +Y (lifts the tip ~12°).
+  // Tip mid-chord local (3.6, -2.625, 0.09) → world (±6.17, +0.34, +1.58).
   f4: [
-    { x: -6.50, y: -0.40, z: 0.80 }, { x: 6.50, y: -0.40, z: 0.80 },
+    { x: -6.17, y: 0.34, z: 1.58 }, { x: 6.17, y: 0.34, z: 1.58 },
   ],
   // F-16's cropped delta sweeps back; outboard edge midpoint is ~1.8 m
   // behind centre, ±4.6 m outboard.
