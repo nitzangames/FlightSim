@@ -3,18 +3,21 @@ import { createTerrain } from '../lib/terrain/index.js';
 import { PLANES } from '../lib/game/planes.js';
 import { PlanePhysics, DragInput } from '../lib/plane/controller.js';
 import { ChaseCamera } from '../lib/plane/camera.js';
-import { ScoreTracker } from '../lib/game/score.js';
-import { UnlockState }  from '../lib/game/unlocks.js';
+import { ScoreTracker, loadStars } from '../lib/game/score.js';
+import { UnlockState, loadUnlocked }  from '../lib/game/unlocks.js';
+import { loadKey, saveKey } from '../lib/game/storage.js';
+import { loadSettings, getSettings } from '../lib/game/settings.js';
 import { RemotePlayers } from '../lib/multiplayer/remote-players.js';
 import { WingContrail } from '../lib/plane/contrails.js';
 import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
 import { CrashDebris }  from '../lib/plane/crash-debris.js';
-import { loadLastVisitPos } from '../lib/poi/markers.js';
+import { loadLastVisitPos, initLastVisitPos, loadVisited } from '../lib/poi/markers.js';
 import { crashed, clampToCeiling, CEILING } from '../lib/game/collision.js';
 import { StateMachine } from '../lib/game/state.js';
 import { buildMenu } from '../lib/ui/menu.js';
 import { buildHUD } from '../lib/ui/hud.js';
+import { buildSettingsPanel } from '../lib/ui/settings-panel.js';
 import { buildCrashOverlay } from '../lib/ui/crash-overlay.js';
 import { biomeAt, biomeDominanceAt, BIOMES } from '../lib/game/biomes.js';
 import { buildScatterRegistry } from '../lib/scatter/index.js';
@@ -37,12 +40,32 @@ const LS_PLANE = 'flightsim.plane';
 // has memorised. The old per-player `flightsim.seed` localStorage entry
 // is intentionally ignored; it can stay in storage harmlessly.
 const seed = 0x46534D31;
-const unlockState = new UnlockState();
+
+// Preload all persistent save state via the storage helper BEFORE constructing
+// anything that depends on it. On nitzan.games the game runs in a sandboxed
+// cross-origin iframe whose localStorage iOS Safari evicts between launches;
+// PlaySDK.load (awaited here) pulls signed-in users' progress from the cloud
+// so it survives that eviction. Anonymous users still rely on localStorage.
+const [
+  initialStars,
+  initialUnlocked,
+  initialVisited,
+  savedPlane,
+] = await Promise.all([
+  loadStars(),
+  loadUnlocked(),
+  loadVisited(),
+  loadKey(LS_PLANE),
+  initLastVisitPos(),
+  loadSettings(),
+]);
+
+const unlockState = new UnlockState(initialUnlocked);
 // Defensive: if the saved plane key is corrupt or refers to a plane that
 // hasn't been unlocked yet (e.g., player cleared unlock storage but kept
 // the selection), fall back to the always-free biplane so the player
 // always boots into something they can actually fly.
-let currentPlane = localStorage.getItem(LS_PLANE) || 'biplane';
+let currentPlane = savedPlane || 'biplane';
 if (!PLANES[currentPlane] || !unlockState.isUnlocked(currentPlane)) {
   currentPlane = 'biplane';
 }
@@ -99,6 +122,7 @@ const terrain = createTerrain({
   style: currentStyle, perfMode: 'high', seed,
   biomeAt,
   scatterGeometries,
+  visited: initialVisited,
 });
 // Spawn near the world origin; spawn altitude is 120m above ground.
 // Spawn well above the tallest realistic peaks (arctic can reach ~700m)
@@ -178,6 +202,13 @@ const PLANE_CONTRAIL_TIPS = {
     { x: -3.0, y:  0.55, z: -1.05 }, { x:  3.0, y:  0.55, z: -1.05 },  // middle wing
     { x: -2.8, y: -0.40, z: -1.00 }, { x:  2.8, y: -0.40, z: -1.00 },  // bottom wing
   ],
+  // Spitfire's elliptical wing: SPAN=11 → tips at ±5.5. Wing shape is
+  // built in XY then rotated -π/2 around X and translated by (0,-0.45,-1.3),
+  // so the wingtip (shape-Y=0 at the spanwise extremes) lands at mesh
+  // (±5.5, -0.35, -1.30) — mid-thickness, on the wing's spanwise axis.
+  ww2: [
+    { x: -5.5, y: -0.35, z: -1.30 }, { x: 5.5, y: -0.35, z: -1.30 },
+  ],
   // P-51's wing is a flat 11 m rectangle at mesh-Y -0.25 and Z -0.5; no
   // sweep, so the tip is just the outboard mid-chord.
   p51: [
@@ -186,6 +217,12 @@ const PLANE_CONTRAIL_TIPS = {
   // A-10's wings are 17 m straight rectangles; tips at ±8.5 outboard.
   a10: [
     { x: -8.5, y: -0.20, z: -0.40 }, { x: 8.5, y: -0.20, z: -0.40 },
+  ],
+  // F-86's wing sweeps 35° back, so the tip is ~1.9 m aft of the wing-center
+  // Z. Wing position (0, -0.25, -0.5), extrude depth 0.18 → mid-thickness
+  // world Y -0.16. SEMI_SPAN 3.8, tip mid-chord shape-Y -1.91 → world Z 1.41.
+  f86: [
+    { x: -3.8, y: -0.16, z: 1.41 }, { x: 3.8, y: -0.16, z: 1.41 },
   ],
   // F-4 outer panels have dihedral, so the wingtip sits 0.47 m above the
   // wing root. Mid-outboard of the outer panel after the ZYX rotation:
@@ -333,7 +370,7 @@ const input = new DragInput(canvas);
 // Trick-based score system. Persistent stars (★) + loop / barrel-roll /
 // inverted / low-altitude bonuses (see lib/game/score.js). One tracker
 // for the whole session.
-const scoreTracker = new ScoreTracker();
+const scoreTracker = new ScoreTracker(initialStars);
 
 // Multiplayer presence — autojoins a public room on PlaySDK ready (see
 // the .onReady wiring at the bottom of this file). Renders remote planes
@@ -409,6 +446,40 @@ function computeVillageNav(terrain, physics) {
   };
 }
 
+// Settings sheet — built once, lives across state transitions. Opens from
+// the in-flight HUD's gear button; closes on backdrop tap or RESUME, or via
+// BACK TO MENU which forwards to the state machine. We hide it on MENU /
+// CRASH transitions defensively in case the player triggered one of those
+// from underneath an open panel.
+const settingsPanel = buildSettingsPanel({
+  root: uiRoot,
+  onBack: () => sm.setState('MENU'),
+});
+
+// PlaySDK haptic — gated on the settings toggle and on the SDK actually
+// existing (local dev, tests, signed-out web users may not have it). All
+// haptic call sites in the FLYING update go through this helper so the
+// gate is a single place.
+function haptic(kind) {
+  if (!getSettings().hapticsOn) return;
+  try {
+    if (typeof window !== 'undefined' && window.PlaySDK && typeof window.PlaySDK.haptic === 'function') {
+      window.PlaySDK.haptic(kind);
+    }
+  } catch {}
+}
+
+// Sustained-state haptic cadence (low + inverted). One shared timer means
+// being both low AND inverted still only fires one pulse every 0.6s, not
+// two. Reset on FLYING.enter so a fresh launch doesn't carry stale timing.
+const SUSTAINED_HAPTIC_INTERVAL_MS = 600;
+let _lastSustainedHapticMs = 0;
+// Trick-flash edge detector — fires haptic on transition from no flash (or
+// a different flash) to a new LOOP / BARREL ROLL flash. POI discoveries
+// also set score.flash, so we substring-filter to avoid double-firing on
+// the POI path (which already runs through the consumeDiscoveries loop).
+let _lastTrickFlashText = null;
+
 // --- State machine ---
 const sm = new StateMachine({
   initial: 'MENU',
@@ -417,6 +488,7 @@ const sm = new StateMachine({
       enter() {
         activeScene = menuScene; activeCam = menuCam;
         clearUI();
+        settingsPanel.hide();
         activeUI = buildMenu({
           THREE, root: uiRoot, menuScene, version: VERSION,
           currentPlane,
@@ -424,7 +496,7 @@ const sm = new StateMachine({
           onPlaneChange: (key) => {
             if (key === currentPlane) return;
             currentPlane = key;
-            localStorage.setItem(LS_PLANE, key);
+            saveKey(LS_PLANE, key);
             setWorldPlane(key);
             // Rebuild physics with the new plane's stats and reset pose
             physics = new PlanePhysics(PLANES[key].stats);
@@ -461,9 +533,11 @@ const sm = new StateMachine({
         // mesh so they teleport with it and need no reset.
         for (const c of contrails) c.contrail.reset();
         flyingCountdown = 1.5;
+        _lastSustainedHapticMs = 0;
+        _lastTrickFlashText = null;
         activeUI = buildHUD({
           root: uiRoot, version: VERSION,
-          onBack: () => sm.setState('MENU'),
+          onSettings: () => settingsPanel.show(),
         });
       },
       update(dt) {
@@ -487,7 +561,11 @@ const sm = new StateMachine({
           activeUI.update({ speed: 0, altitude: alt, countdown: flyingCountdown, ...vNav });
           return;
         }
-        physics.update({ ...input.read(), dt });
+        // Apply Y-invert at the input boundary so the rest of the stack
+        // (physics, score, tricks) is unaware of the setting.
+        const ctrl = input.read();
+        if (getSettings().invertY) ctrl.dragY = -ctrl.dragY;
+        physics.update({ ...ctrl, dt });
         clampToCeiling(physics, CEILING);
         worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
         worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
@@ -525,9 +603,32 @@ const sm = new StateMachine({
         const flash = terrain.markers ? terrain.markers.consumeFlash() : null;
         if (terrain.markers) {
           const discoveries = terrain.markers.consumeDiscoveries();
-          for (let i = 0; i < discoveries.length; i++) scoreTracker.awardDiscovery();
+          for (let i = 0; i < discoveries.length; i++) {
+            scoreTracker.awardDiscovery();
+            haptic('success');
+          }
         }
         const score = scoreTracker.update(physics, terrain, dt);
+
+        // Haptics: sustained pulse while low or inverted, edge-triggered
+        // thump on trick completions. POI thump already fired above in the
+        // discoveries loop. All routed through haptic() which gates on
+        // settings.hapticsOn + PlaySDK availability.
+        const lowActive = score.bonuses.some(b => b.label === 'LOW');
+        const invActive = physics.up.y < -0.3;
+        if (lowActive || invActive) {
+          const nowMs = performance.now();
+          if (nowMs - _lastSustainedHapticMs >= SUSTAINED_HAPTIC_INTERVAL_MS) {
+            haptic('light');
+            _lastSustainedHapticMs = nowMs;
+          }
+        }
+        const flashText = score.flash ? score.flash.text : null;
+        if (flashText && flashText !== _lastTrickFlashText
+            && (flashText.includes('LOOP') || flashText.includes('BARREL'))) {
+          haptic('medium');
+        }
+        _lastTrickFlashText = flashText;
         // Minimap data: every visited landmark's xz + type, plus the
         // plane's xz and heading. The HUD does the drawing.
         const visitedPois = [];
@@ -599,6 +700,7 @@ const sm = new StateMachine({
       enter() {
         activeScene = worldScene; activeCam = worldCam;
         clearUI();
+        settingsPanel.hide();
         // Engine-exhaust cones are attached to worldPlaneMesh and would
         // otherwise be detached + flung as debris. Dispose them first so
         // only structural plane parts become wreckage.
