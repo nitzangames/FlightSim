@@ -1,6 +1,6 @@
 {
   "name": "flight-sim",
-  "version": "0.1.152",
+  "version": "0.1.153",
   "type": "module",
   "private": true,
   "scripts": {
