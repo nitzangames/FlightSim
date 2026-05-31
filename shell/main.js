@@ -220,9 +220,10 @@ const PLANE_CONTRAIL_TIPS = {
   p51: [
     { x: -5.5, y: -0.35, z: -1.80 }, { x: 5.5, y: -0.35, z: -1.80 },
   ],
-  // A-10's wings are 17 m straight rectangles; tips at ±8.5 outboard.
+  // A-10's wings are 17 m straight rectangles at world Y=-0.30 (rebuilt
+  // BoxGeometry, was -0.20). Tips at ±8.5 outboard, mid-thickness Y -0.30.
   a10: [
-    { x: -8.5, y: -0.20, z: -0.40 }, { x: 8.5, y: -0.20, z: -0.40 },
+    { x: -8.5, y: -0.30, z: -0.40 }, { x: 8.5, y: -0.30, z: -0.40 },
   ],
   // F-86's wing sweeps 35° back, so the tip is ~1.9 m aft of the wing-center
   // Z. Wing position (0, -0.25, -0.5), extrude depth 0.18 → mid-thickness
