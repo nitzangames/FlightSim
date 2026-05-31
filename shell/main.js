@@ -209,10 +209,11 @@ const PLANE_CONTRAIL_TIPS = {
   ww2: [
     { x: -5.5, y: -0.35, z: -1.30 }, { x: 5.5, y: -0.35, z: -1.30 },
   ],
-  // P-51's wing is a flat 11 m rectangle at mesh-Y -0.25 and Z -0.5; no
-  // sweep, so the tip is just the outboard mid-chord.
+  // P-51's wing is a flat 11 m rectangle. After the rebuild the wing
+  // sits forward at position (0, -0.45, -1.80) with extrude depth 0.20
+  // → mid-thickness world Y = -0.35.
   p51: [
-    { x: -5.5, y: -0.25, z: -0.50 }, { x: 5.5, y: -0.25, z: -0.50 },
+    { x: -5.5, y: -0.35, z: -1.80 }, { x: 5.5, y: -0.35, z: -1.80 },
   ],
   // A-10's wings are 17 m straight rectangles; tips at ±8.5 outboard.
   a10: [
@@ -239,6 +240,18 @@ const PLANE_CONTRAIL_TIPS = {
   // ±4.42 m outboard (BoxGeometry 4.8 × 3.0 at ±2.3 mesh-X after rotation).
   f18: [
     { x: -4.42, y: -0.05, z: 1.83 }, { x: 4.42, y: -0.05, z: 1.83 },
+  ],
+  // F-15's wing sweeps 22°; BoxGeometry 5.5 × 3.2 at ±3.0 mesh-X. After
+  // Ry(-22°), tip outboard edge midpoint at world (±5.55, -0.05, +1.53).
+  f15: [
+    { x: -5.55, y: -0.05, z: 1.53 }, { x: 5.55, y: -0.05, z: 1.53 },
+  ],
+  // F-22's wing is a scaled delta (scale 1.25× on X+Y). Tip shape vertex
+  // at (3.6, 0.25) scales to (4.5, 0.3125), then Rx(-π/2) and translation
+  // give world tip (±4.50, -0.10, +0.09). Generic fallback (±6.8, 0, 0)
+  // is way off.
+  f22: [
+    { x: -4.50, y: -0.10, z: 0.09 }, { x: 4.50, y: -0.10, z: 0.09 },
   ],
   // SR-71's delta wing sweeps deep back so the tip is far aft: shape tip
   // (5.6, -5.5) lands at world (±5.6, -0.25, 5.5) — near the tail.
