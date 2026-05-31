@@ -224,11 +224,11 @@ const PLANE_CONTRAIL_TIPS = {
   f86: [
     { x: -3.8, y: -0.16, z: 1.41 }, { x: 3.8, y: -0.16, z: 1.41 },
   ],
-  // F-4 outer panels have dihedral, so the wingtip sits 0.47 m above the
-  // wing root. Mid-outboard of the outer panel after the ZYX rotation:
-  // ±4.40 m outboard, 0.95 m behind plane centre, 0.47 m up.
+  // F-4 outer panel: inner-wing position (±0.75, -0.50, -1.05), outer
+  // panel root at world X=±2.65, KINK=1.9 + outer span 3.6 → tip mid-chord
+  // at world (±6.5, -0.4, +0.8) after the 12° pseudo-dihedral.
   f4: [
-    { x: -4.40, y: 0.47, z: 0.95 }, { x: 4.40, y: 0.47, z: 0.95 },
+    { x: -6.50, y: -0.40, z: 0.80 }, { x: 6.50, y: -0.40, z: 0.80 },
   ],
   // F-16's cropped delta sweeps back; outboard edge midpoint is ~1.8 m
   // behind centre, ±4.6 m outboard.
