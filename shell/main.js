@@ -243,10 +243,10 @@ const PLANE_CONTRAIL_TIPS = {
   f16: [
     { x: -4.6, y: 0.03, z: 1.00 }, { x: 4.6, y: 0.03, z: 1.00 },
   ],
-  // F-18's wing sweeps 28°; outboard edge midpoint is ~1.83 m behind centre,
-  // ±4.42 m outboard (BoxGeometry 4.8 × 3.0 at ±2.3 mesh-X after rotation).
+  // F-18 cropped delta wing tip mid-chord at shape (X=4.6, Y=-1.1) with
+  // tip cap; after Rx(-π/2) + position(0,-0.05,0.4) world = (±4.6, +0.03, +1.5).
   f18: [
-    { x: -4.42, y: -0.05, z: 1.83 }, { x: 4.42, y: -0.05, z: 1.83 },
+    { x: -4.6, y: 0.03, z: 1.5 }, { x: 4.6, y: 0.03, z: 1.5 },
   ],
   // F-15's wing sweeps 22°; BoxGeometry 5.5 × 3.2 at ±3.0 mesh-X. After
   // Ry(-22°), tip outboard edge midpoint at world (±5.55, -0.05, +1.53).
