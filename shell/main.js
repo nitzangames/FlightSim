@@ -248,10 +248,11 @@ const PLANE_CONTRAIL_TIPS = {
   f18: [
     { x: -4.6, y: 0.03, z: 1.5 }, { x: 4.6, y: 0.03, z: 1.5 },
   ],
-  // F-15's wing sweeps 22°; BoxGeometry 5.5 × 3.2 at ±3.0 mesh-X. After
-  // Ry(-22°), tip outboard edge midpoint at world (±5.55, -0.05, +1.53).
+  // F-15 cropped delta wing tip mid-chord at shape (X=5.4, Y=-1.3) with
+  // extrude depth 0.18; after Rx(-π/2) + position(0,0,0.6) world tip mid
+  // = (±5.4, +0.09, +1.9).
   f15: [
-    { x: -5.55, y: -0.05, z: 1.53 }, { x: 5.55, y: -0.05, z: 1.53 },
+    { x: -5.4, y: 0.09, z: 1.9 }, { x: 5.4, y: 0.09, z: 1.9 },
   ],
   // F-22's wing is a scaled delta (scale 1.25× on X+Y). Tip shape vertex
   // at (3.6, 0.25) scales to (4.5, 0.3125), then Rx(-π/2) and translation

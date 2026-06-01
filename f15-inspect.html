@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>F-16 Inspect</title>
+  <title>F-15 Inspect</title>
   <style>
     html, body { margin:0; padding:0; background:#11161e; color:#cfd8e0; font:14px ui-monospace,monospace; }
     .row { display:flex; gap:8px; padding:8px; }
@@ -24,7 +24,7 @@
   <div class="v"><canvas id="cv-rear"></canvas><div class="lbl">REAR</div></div>
 </div>
 <script type="module">
-import { buildF16 } from './lib/plane/f16.js';
+import { buildF15 } from './lib/plane/f15.js';
 function makeView(canvasId, camPos) {
   const canvas = document.getElementById(canvasId);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -37,7 +37,7 @@ function makeView(canvasId, camPos) {
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(6, 10, 7);
   scene.add(sun);
-  const plane = buildF16(THREE);
+  const plane = buildF15(THREE);
   scene.add(plane);
   const cam = new THREE.OrthographicCamera(-7, 7, 7, -7, 0.1, 200);
   cam.position.set(...camPos);
