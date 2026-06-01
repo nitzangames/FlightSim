@@ -99,12 +99,12 @@ const menuSun = new THREE.DirectionalLight(0xffffff, 1.0);
 menuSun.position.set(8, 12, 8);
 menuScene.add(menuSun);
 const menuCam = new THREE.PerspectiveCamera(30, 9/16, 0.1, 100);
-menuCam.position.set(16.25, 6.25, 16.25);
+menuCam.position.set(32.5, 12.5, 32.5);
 // lookAt below the plane center (which sits around y=0.5) tilts the
 // camera upward so the plane visual sits in the upper half of the screen.
 // This frees space below for the name + stats + FLY button to spread
 // without crowding into the plane preview.
-menuCam.lookAt(0, -1.5, 0);
+menuCam.lookAt(0, -3.0, 0);
 
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -238,9 +238,10 @@ const PLANE_CONTRAIL_TIPS = {
     { x: -6.17, y: 0.34, z: 1.58 }, { x: 6.17, y: 0.34, z: 1.58 },
   ],
   // F-16's cropped delta wing tip shape midpoint at (X=4.6, Y=-1.0) in
-  // local shape coords; after Rx(-π/2) world = (±4.6, -0.05, +1.0).
+  // local shape coords; after Rx(-π/2) and position.y=-0.05 with extrude
+  // depth 0.16 (mid-thickness), world = (±4.6, +0.03, +1.0).
   f16: [
-    { x: -4.6, y: -0.05, z: 1.00 }, { x: 4.6, y: -0.05, z: 1.00 },
+    { x: -4.6, y: 0.03, z: 1.00 }, { x: 4.6, y: 0.03, z: 1.00 },
   ],
   // F-18's wing sweeps 28°; outboard edge midpoint is ~1.83 m behind centre,
   // ±4.42 m outboard (BoxGeometry 4.8 × 3.0 at ±2.3 mesh-X after rotation).

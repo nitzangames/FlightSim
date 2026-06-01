@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>F-16 Side</title>
+  <style>
+    html, body { margin:0; padding:0; background:#ffffff; }
+    canvas { display:block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<canvas id="cv" width="1400" height="500"></canvas>
+<script type="module">
+import { buildF16 } from './lib/plane/f16.js';
+
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(2);
+renderer.setSize(1400, 500, false);
+renderer.setClearColor(0xffffff);
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb0b0b0, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(6, 10, 7);
+scene.add(sun);
+const plane = buildF16(THREE);
+scene.add(plane);
+// Side view: camera on +X, looking -X, with frustum sized to match the plane.
+// Aspect 1400/500 = 2.8.
+const halfH = 3.0;
+const halfW = halfH * (1400/500);
+const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 200);
+cam.position.set(30, 0, 0);
+cam.lookAt(0, 0, 0);
+renderer.render(scene, cam);
+</script>
+</body>
+</html>
