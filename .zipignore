@@ -11,6 +11,11 @@ thumbnails-c.html
 thumbnails-c2.html
 thumbnail-final.html
 poi-mockups.html
+plane-mockups.html
+*-inspect.html
+*-inspect.png
+*-side.html
+*-side.png
 package.json
 package-lock.json
 vitest.config.js
