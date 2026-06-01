@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SR-71 Inspect</title>
+  <style>
+    html, body { margin:0; padding:0; background:#11161e; color:#cfd8e0; font:14px ui-monospace,monospace; }
+    .row { display:flex; gap:8px; padding:8px; }
+    .v { flex:1; background:#0a0e14; border:1px solid #1f2530; }
+    .v canvas { display:block; width:100%; aspect-ratio:1/1; }
+    .v .lbl { padding:4px 8px; font-size:12px; color:#8896aa; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="row">
+  <div class="v"><canvas id="cv-top"></canvas><div class="lbl">TOP</div></div>
+  <div class="v"><canvas id="cv-side"></canvas><div class="lbl">SIDE</div></div>
+  <div class="v"><canvas id="cv-iso"></canvas><div class="lbl">ISO</div></div>
+</div>
+<div class="row">
+  <div class="v"><canvas id="cv-bottom"></canvas><div class="lbl">BOTTOM</div></div>
+  <div class="v"><canvas id="cv-front"></canvas><div class="lbl">FRONT</div></div>
+  <div class="v"><canvas id="cv-rear"></canvas><div class="lbl">REAR</div></div>
+</div>
+<script type="module">
+import { buildSR71 } from './lib/plane/sr71.js';
+function makeView(canvasId, camPos) {
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(2);
+  const sz = canvas.clientWidth || 500;
+  renderer.setSize(sz, sz, false);
+  renderer.setClearColor(0x14181f);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x202428, 1.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+  sun.position.set(6, 10, 7);
+  scene.add(sun);
+  const plane = buildSR71(THREE);
+  scene.add(plane);
+  const cam = new THREE.OrthographicCamera(-8, 8, 8, -8, 0.1, 200);
+  cam.position.set(...camPos);
+  cam.lookAt(0, 0, 0);
+  renderer.render(scene, cam);
+}
+makeView('cv-top',    [0, 30, 0]);
+makeView('cv-side',   [30, 0, 0]);
+makeView('cv-iso',    [22, 18, -22]);
+makeView('cv-bottom', [0, -30, 0]);
+makeView('cv-front',  [0, 0, -30]);
+makeView('cv-rear',   [0, 0, 30]);
+</script>
+</body>
+</html>
