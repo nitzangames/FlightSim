@@ -9,26 +9,18 @@
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
       overflow: hidden; background: #000;
-      display: flex; align-items: center; justify-content: center;
     }
-    /* Lock to 9:16 portrait unconditionally. The nitzan.games platform
-       wraps games in an iframe that already enforces aspect-ratio 9:16,
-       so any "letterbox bars" seen on a tall phone in local dev are the
-       same bars the platform itself draws — not a bug to chase. Authoring
-       the inner stage at 9:16 keeps the canvas + UI consistent across
-       platform, local dev, and the /create preview. (Prior versions only
-       constrained on landscape, which left the canvas at the iframe's
-       actual rendered shape — fine in practice but fed an arbitrary aspect
-       into the WebGL camera via resize() and was inconsistent across
-       devices.) */
+    /* The stage fills the iframe. On mobile the platform iframe is locked to
+       9:16, so the stage is portrait; on desktop the platform's desktop_fill
+       flag (meta.json) hands the iframe the full landscape window and the 3D
+       view fills it edge-to-edge. The WebGL cameras adapt to the canvas's
+       actual aspect in main.js resize(), so the world renders correctly at
+       any shape. */
     #stage {
-      position: relative;
-      aspect-ratio: 9 / 16;
-      width: min(100vw, calc(100vh * 9 / 16));
-      height: min(100vh, calc(100vw * 16 / 9));
-      container-type: size;
+      position: fixed; inset: 0;
     }
     canvas {
+      position: absolute; inset: 0;
       display: block; width: 100%; height: 100%;
       touch-action: none;
       -webkit-touch-callout: none; -webkit-user-select: none;
@@ -53,8 +45,18 @@
     }
     @keyframes boot-spin { to { transform: rotate(360deg); } }
     .boot-phase { font-size: 13px; color: #8896aa; letter-spacing: 0.08em; }
+    /* DOM UI (menu, HUD, overlays) stays in a centered 9:16 portrait column
+       even when the 3D view fills a wide desktop window — so the cqi-based
+       layout keeps the exact proportions it has on mobile. container-type:size
+       makes every cqi unit inside resolve to THIS box, not the full window.
+       On a portrait iframe the box already equals the whole stage. */
     #ui-root {
-      position: absolute; inset: 0; pointer-events: none; z-index: 50;
+      position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(100vw, calc(100vh * 9 / 16));
+      height: min(100vh, calc(100vw * 16 / 9));
+      container-type: size;
+      pointer-events: none; z-index: 50;
       overflow: hidden;
     }
   </style>
