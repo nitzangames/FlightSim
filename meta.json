@@ -4,5 +4,6 @@
   "description": "Free-roam flight sandbox. Pick a plane, fly anywhere across a procedural world of mountains, rivers, and forests. Same seed every flight.",
   "tags": ["3d", "sandbox", "flying", "casual", "exploration"],
   "author": "nitzanwilnai",
-  "thumbnail": "thumbnail.png"
+  "thumbnail": "thumbnail.png",
+  "desktop_fill": true
 }
