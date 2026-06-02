@@ -285,31 +285,17 @@ function rebuildContrailsFor(key) {
   }
 }
 
-// Engine nozzle positions for jet aircraft only. Coordinates from each
-// plane's mesh code: nozzles sit at +Z (rear) of the fuselage. Propeller
-// planes (biplane / triplane / ww2 / p51) are absent — they get no exhaust.
-// A-10 also omitted: its high-bypass turbofans don't show flame in real
-// life, and a glow plume on a low-and-slow CAS plane would look wrong.
-const PLANE_JET_NOZZLES = {
-  f86:  [{ x:  0.0,  y:  0.00, z: 4.4 }],
-  f4:   [{ x: -0.42, y: -0.05, z: 5.05 }, { x: 0.42, y: -0.05, z: 5.05 }],
-  f16:  [{ x:  0.0,  y:  0.00, z: 4.4 }],
-  f18:  [{ x: -0.35, y: -0.05, z: 4.4 }, { x: 0.35, y: -0.05, z: 4.4 }],
-  f15:  [{ x: -0.4,  y: -0.05, z: 5.0 }, { x: 0.4,  y: -0.05, z: 5.0 }],
-  f22:  [{ x: -0.4,  y: -0.10, z: 4.7 }, { x: 0.4,  y: -0.10, z: 4.7 }],
-  // SR-71 nozzles sit at the back of each engine nacelle — outboard and
-  // far aft compared to a normal fighter.
-  sr71: [{ x: -2.3, y: -0.20, z: 6.3 }, { x: 2.3, y: -0.20, z: 6.3 }],
-};
-// Flame cones attach to the WORLD PLANE MESH (not the scene), so they
-// inherit its rotation and 0.875× scale and don't need per-frame world
-// transform math — the local position is just the nozzle offset.
+// Flame cones attach to the WORLD PLANE MESH (not the scene), so they inherit
+// its rotation and 0.875× scale and don't need per-frame world transform math.
+// Each plane's build() records its exhaust-exit positions on
+// `group.userData.nozzles` (pre-scale plane coords, co-located with the
+// exhaust-hole mesh in lib/plane/*.js so the flame can never drift from the
+// nozzle). Propeller planes leave it undefined → no flames.
 const flameCones = [];
-function rebuildJetExhaustsFor(key) {
+function rebuildJetExhausts() {
   for (const f of flameCones) f.dispose();
   flameCones.length = 0;
-  const nozzles = PLANE_JET_NOZZLES[key];
-  if (!nozzles) return;
+  const nozzles = (worldPlaneMesh && worldPlaneMesh.userData.nozzles) || [];
   for (const nozzle of nozzles) {
     const cone = new FlameCone(THREE, worldPlaneMesh);
     cone.setLocalPosition(nozzle.x, nozzle.y, nozzle.z);
@@ -334,7 +320,7 @@ function setWorldPlane(key) {
   worldPlaneMesh.scale.setScalar(WORLD_PLANE_SCALE);
   worldScene.add(worldPlaneMesh);
   rebuildContrailsFor(key);
-  rebuildJetExhaustsFor(key);
+  rebuildJetExhausts();
   planeShadow.setScale(PLANES[key].stats.collisionRadius);
 }
 setWorldPlane(currentPlane);
