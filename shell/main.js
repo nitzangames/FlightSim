@@ -9,6 +9,7 @@ import { loadKey, saveKey } from '../lib/game/storage.js';
 import { loadSettings, getSettings } from '../lib/game/settings.js';
 import { RemotePlayers } from '../lib/multiplayer/remote-players.js';
 import { WingContrail } from '../lib/plane/contrails.js';
+import { computeContrailTips } from '../lib/plane/contrail-tips.js';
 import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
 import { CrashDebris }  from '../lib/plane/crash-debris.js';
@@ -184,98 +185,22 @@ let worldPlaneMesh = null;
 // or floating like a flat disk would.
 const planeShadow = new PlaneShadow(THREE, worldScene);
 
-// Per-plane wingtip offsets in plane-local coords (+X right, -X left,
-// +Y up, -Z forward). One contrail spawns per entry. Planes not listed
-// fall back to a generic two-tip layout at (±collisionRadius, 0, 0).
-// Positions are the visible mid-outboard edge of the wing for swept-wing
-// jets — not the plane's center-of-fuselage Z, which is what the fallback
-// computes; with sweep the actual wingtip ends up significantly behind
-// the plane's longitudinal centre, so contrails from the fallback emit
-// well in front of where the wing edge actually is.
-const PLANE_CONTRAIL_TIPS = {
-  // Biplane (Fairey Flycatcher rebuild): racetrack wings, span 8.5 lower,
-  // 9.0 upper. Tip mid-chord at world (±halfSpan, position.y+thickness/2,
-  // position.z).
-  biplane: [
-    { x: -4.25, y: -0.25, z: -1.20 }, { x:  4.25, y: -0.25, z: -1.20 },  // lower wing (span 8.5)
-    { x: -4.50, y:  1.10, z: -1.50 }, { x:  4.50, y:  1.10, z: -1.50 },  // upper wing (span 9.0)
-  ],
-  // Triplane (Fokker Dr.I rebuild): racetrack wings, spans 7.0 top, 6.8
-  // mid, 6.4 bot. Tip mid-chord at world (±halfSpan, position.y+0.08, position.z).
-  triplane: [
-    { x: -3.50, y:  1.58, z: -1.10 }, { x:  3.50, y:  1.58, z: -1.10 },  // top wing
-    { x: -3.40, y:  0.63, z: -1.05 }, { x:  3.40, y:  0.63, z: -1.05 },  // middle wing
-    { x: -3.20, y: -0.40, z: -1.00 }, { x:  3.20, y: -0.40, z: -1.00 },  // bottom wing
-  ],
-  // Spitfire's elliptical wing: SPAN=11 → tips at ±5.5. Wing shape is
-  // built in XY then rotated -π/2 around X and translated by (0,-0.45,-1.3),
-  // so the wingtip (shape-Y=0 at the spanwise extremes) lands at mesh
-  // (±5.5, -0.35, -1.30) — mid-thickness, on the wing's spanwise axis.
-  ww2: [
-    { x: -5.5, y: -0.35, z: -1.30 }, { x: 5.5, y: -0.35, z: -1.30 },
-  ],
-  // P-51's wing is a flat 11 m rectangle. After the rebuild the wing
-  // sits forward at position (0, -0.45, -1.80) with extrude depth 0.20
-  // → mid-thickness world Y = -0.35.
-  p51: [
-    { x: -5.5, y: -0.35, z: -1.80 }, { x: 5.5, y: -0.35, z: -1.80 },
-  ],
-  // A-10's wings are 17 m straight rectangles at world Y=-0.30 (rebuilt
-  // BoxGeometry, was -0.20). Tips at ±8.5 outboard, mid-thickness Y -0.30.
-  a10: [
-    { x: -8.5, y: -0.30, z: -0.40 }, { x: 8.5, y: -0.30, z: -0.40 },
-  ],
-  // F-86's wing sweeps 35° back, so the tip is ~1.9 m aft of the wing-center
-  // Z. Wing position (0, -0.25, -0.5), extrude depth 0.18 → mid-thickness
-  // world Y -0.16. SEMI_SPAN 3.8, tip mid-chord shape-Y -1.91 → world Z 1.41.
-  f86: [
-    { x: -3.8, y: -0.16, z: 1.41 }, { x: 3.8, y: -0.16, z: 1.41 },
-  ],
-  // F-4 outer panel: shape +Y → world -Z (forward) after Rx(-π/2), then
-  // Rz(±0.21) rotates shape +X partly into +Y (lifts the tip ~12°).
-  // Tip mid-chord local (3.6, -2.625, 0.09) → world (±6.17, +0.34, +1.58).
-  f4: [
-    { x: -6.17, y: 0.34, z: 1.58 }, { x: 6.17, y: 0.34, z: 1.58 },
-  ],
-  // F-16's cropped delta wing tip shape midpoint at (X=4.6, Y=-1.0) in
-  // local shape coords; after Rx(-π/2) and position.y=-0.05 with extrude
-  // depth 0.16 (mid-thickness), world = (±4.6, +0.03, +1.0).
-  f16: [
-    { x: -4.6, y: 0.03, z: 1.00 }, { x: 4.6, y: 0.03, z: 1.00 },
-  ],
-  // F-18 cropped delta wing tip mid-chord at shape (X=4.6, Y=-1.1) with
-  // tip cap; after Rx(-π/2) + position(0,-0.05,0.4) world = (±4.6, +0.03, +1.5).
-  f18: [
-    { x: -4.6, y: 0.03, z: 1.5 }, { x: 4.6, y: 0.03, z: 1.5 },
-  ],
-  // F-15 cropped delta wing tip mid-chord at shape (X=5.4, Y=-1.3) with
-  // extrude depth 0.18; after Rx(-π/2) + position(0,0,0.6) world tip mid
-  // = (±5.4, +0.09, +1.9).
-  f15: [
-    { x: -5.4, y: 0.09, z: 1.9 }, { x: 5.4, y: 0.09, z: 1.9 },
-  ],
-  // F-22's wing is a scaled delta (scale 1.25× on X+Y). Tip shape vertex
-  // at (3.6, 0.25) scales to (4.5, 0.3125), then Rx(-π/2) and translation
-  // give world tip (±4.50, -0.10, +0.09). Generic fallback (±6.8, 0, 0)
-  // is way off.
-  f22: [
-    { x: -4.50, y: -0.10, z: 0.09 }, { x: 4.50, y: -0.10, z: 0.09 },
-  ],
-  // SR-71's delta wing sweeps deep back so the tip is far aft: shape tip
-  // (5.6, -5.5) lands at world (±5.6, -0.25, 5.5) — near the tail.
-  sr71: [
-    { x: -5.6, y: -0.25, z: 5.50 }, { x: 5.6, y: -0.25, z: 5.50 },
-  ],
-};
+// Wingtip contrail emit points are derived from the plane's ACTUAL geometry
+// (computeContrailTips scans the built mesh — see lib/plane/contrail-tips.js),
+// so they can never drift from the wings the way the old hand-maintained table
+// did (its SR-71 and F-22 entries had silently gone stale after wing rebuilds).
+// One contrail spawns per detected wingtip: 2 for a single-wing jet, 4 for the
+// biplane, 6 for the triplane. Falls back to a generic two-tip layout only if
+// no wings are detected. Tips are in plane-local (pre-scale) coords.
 function getContrailTips(planeKey) {
-  if (PLANE_CONTRAIL_TIPS[planeKey]) return PLANE_CONTRAIL_TIPS[planeKey];
+  const tips = computeContrailTips(THREE, worldPlaneMesh);
+  if (tips.length) return tips;
   const r = PLANES[planeKey].stats.collisionRadius;
   return [{ x: -r, y: 0, z: 0 }, { x: r, y: 0, z: 0 }];
 }
 
-// Active contrails: rebuilt on every plane change so a biplane gets 4 ribbons,
-// a triplane 6, every other plane 2. Each entry pairs the WingContrail mesh
-// with the local (x,y,z) wingtip offset to sample each frame.
+// Active contrails: rebuilt on every plane change. Each entry pairs the
+// WingContrail mesh with the local (x,y,z) wingtip offset sampled each frame.
 const contrails = [];
 function rebuildContrailsFor(key) {
   for (const c of contrails) c.contrail.dispose();
