@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { crashed, clampToCeiling } from '../lib/game/collision.js';
+import {
+  crashed, clampToCeiling, impactAngleDeg, grazeVerdict, GRAZE_MAX_ANGLE_DEG,
+} from '../lib/game/collision.js';
 
 const terrainAt = (h) => ({ getHeight: () => h });
+
+// Flier with an explicit nose direction (forward) for the graze/angle tests.
+function flier(y, fwd, { x = 0, z = 0, upY = 1, speed = 100 } = {}) {
+  return { x, z, y, up: { y: upY }, forward: fwd, speed };
+}
+// Unit forward vector for a dive `deg` below horizontal (heading -Z).
+const dive = (deg) => {
+  const r = (deg * Math.PI) / 180;
+  return { x: 0, y: -Math.sin(r), z: -Math.cos(r) };
+};
 
 // Shorthand for a plane physics object with explicit orientation. up.y in
 // [-1, 1]: 1 = level upright, 0 = knife-edge, -1 = inverted.
@@ -76,6 +88,51 @@ describe('crashed (orientation-aware)', () => {
     // So crash threshold is y = ground + 3.46.
     expect(crashed(plane(103.5, Math.SQRT1_2), terrainAt(100), 3.7, 1.2)).toBe(false);
     expect(crashed(plane(103.4, Math.SQRT1_2), terrainAt(100), 3.7, 1.2)).toBe(true);
+  });
+});
+
+describe('impactAngleDeg', () => {
+  it('reads ~0° for level flight over flat ground', () => {
+    expect(impactAngleDeg(flier(100, { x: 0, y: 0, z: -1 }), terrainAt(100))).toBeCloseTo(0, 1);
+  });
+  it('matches the dive angle over flat ground', () => {
+    expect(impactAngleDeg(flier(100, dive(30)), terrainAt(100))).toBeCloseTo(30, 0);
+    expect(impactAngleDeg(flier(100, dive(10)), terrainAt(100))).toBeCloseTo(10, 0);
+  });
+  it('reads a level plane flying into a hillside as steep (slope-aware)', () => {
+    // Ground rises 2 m per metre in +x; flying +x straight into it.
+    const hill = { getHeight: (x) => 100 + 2 * x };
+    expect(impactAngleDeg(flier(100, { x: 1, y: 0, z: 0 }), hill)).toBeGreaterThan(50);
+  });
+});
+
+describe('grazeVerdict', () => {
+  const R = 5, VR = 1.2;
+  it('null when there is no terrain contact', () => {
+    expect(grazeVerdict(flier(100, dive(5)), terrainAt(50), R, VR)).toBeNull();
+  });
+  it('shallow contact over land → graze with proportional speed loss', () => {
+    const g = grazeVerdict(flier(100.5, dive(5)), terrainAt(100), R, VR);
+    expect(g).not.toBeNull();
+    expect(g.angleDeg).toBeCloseTo(5, 0);
+    expect(g.lossFrac).toBeCloseTo(0.05 + 0.45 * (5 / 20), 2);   // ≈ 0.1625
+    expect(g.surfaceY).toBe(100);
+  });
+  it('near-parallel skim loses little; near-limit graze loses a lot', () => {
+    const a = grazeVerdict(flier(100.5, dive(0.5)), terrainAt(100), R, VR);
+    const b = grazeVerdict(flier(100.5, dive(19.5)), terrainAt(100), R, VR);
+    expect(a.lossFrac).toBeLessThan(0.1);
+    expect(b.lossFrac).toBeGreaterThan(0.45);
+  });
+  it('steep dive beyond the threshold → null (crashes)', () => {
+    expect(grazeVerdict(flier(100.5, dive(35)), terrainAt(100), R, VR)).toBeNull();
+  });
+  it('water contact → null (crashes) even at a shallow angle', () => {
+    // seabed at -80, water surface at 0; plane skimming just above the water.
+    expect(grazeVerdict(flier(0.5, dive(5)), terrainAt(-80), R, VR)).toBeNull();
+  });
+  it('exposes the threshold as 20°', () => {
+    expect(GRAZE_MAX_ANGLE_DEG).toBe(20);
   });
 });
 

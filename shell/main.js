@@ -14,7 +14,7 @@ import { FlameCone }    from '../lib/plane/flame-cone.js';
 import { PlaneShadow }  from '../lib/plane/shadow.js';
 import { CrashDebris }  from '../lib/plane/crash-debris.js';
 import { loadLastVisitPos, initLastVisitPos, loadVisited } from '../lib/poi/markers.js';
-import { crashed, clampToCeiling, CEILING } from '../lib/game/collision.js';
+import { crashed, clampToCeiling, CEILING, grazeVerdict, impactAngleDeg } from '../lib/game/collision.js';
 import { StateMachine } from '../lib/game/state.js';
 import { buildMenu } from '../lib/ui/menu.js';
 import { buildHUD } from '../lib/ui/hud.js';
@@ -29,6 +29,16 @@ const THREE = window.THREE;
 const canvas = document.getElementById('game');
 const boot = document.getElementById('boot');
 const uiRoot = document.getElementById('ui-root');
+
+// True only in local dev (localhost / 127.0.0.1) — the platform serves the
+// game from its own iframe origin, never localhost. Gates debug-only aids so
+// they're inert on nitzan.games and safe to commit.
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+// DEBUG (localhost only): impact angle of the last crash, shown under the crash
+// text — uses the same collision.impactAngleDeg the graze mechanic decides on,
+// so a steep crash shows an angle > GRAZE_MAX_ANGLE_DEG.
+let lastImpactAngleDeg = null;
 
 // --- localStorage keys ---
 const LS_PLANE = 'flightsim.plane';
@@ -61,7 +71,8 @@ const [
   loadSettings(),
 ]);
 
-const unlockState = new UnlockState(initialUnlocked);
+// On localhost every plane is unlocked so all of them are free to test.
+const unlockState = new UnlockState(initialUnlocked, IS_LOCAL);
 // Defensive: if the saved plane key is corrupt or refers to a plane that
 // hasn't been unlocked yet (e.g., player cleared unlock storage but kept
 // the selection), fall back to the always-free biplane so the player
@@ -618,11 +629,15 @@ const sm = new StateMachine({
           ...vNav,
         });
         flyingCountdown -= dt;
-        if (crashed(
-          physics, terrain,
-          physics.cfg.collisionRadius * WORLD_PLANE_SCALE,
-          physics.cfg.vertRadius       * WORLD_PLANE_SCALE,
-        )) {
+        const hR = physics.cfg.collisionRadius * WORLD_PLANE_SCALE;
+        const vR = physics.cfg.vertRadius * WORLD_PLANE_SCALE;
+        // Shallow land contact → graze off it (survive, lose speed). Otherwise
+        // (steep, water, or building) fall through to the normal crash check.
+        const graze = grazeVerdict(physics, terrain, hR, vR);
+        if (graze) {
+          physics.applyGraze(graze);
+        } else if (crashed(physics, terrain, hR, vR)) {
+          lastImpactAngleDeg = IS_LOCAL ? impactAngleDeg(physics, terrain) : null;
           sm.setState('CRASH');
         }
       },
@@ -645,6 +660,7 @@ const sm = new StateMachine({
         activeUI = buildCrashOverlay({
           root: uiRoot, durationMs: 3000,
           onComplete: () => sm.setState('MENU'),
+          subtext: (IS_LOCAL && lastImpactAngleDeg != null) ? `impact ${lastImpactAngleDeg.toFixed(1)}°` : null,
         });
       },
       update(dt) {
