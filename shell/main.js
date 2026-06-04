@@ -187,6 +187,14 @@ function applyBiome(planeX, planeZ) {
 // radius is scaled with the mesh so crashes line up with what's drawn.
 const WORLD_PLANE_SCALE = 0.875;   // 3.5× the previous 0.25 — larger, more readable plane in the world
 
+// Overspeed buffet — the airframe vibrates when it exceeds cruise speed (only
+// happens in dives; the engine holds level flight at cruise). Purely cosmetic:
+// physics, camera, contrails and shadow all read `physics`, not the jittered
+// mesh. Shake ramps from MARGIN m/s over cruise to full at MARGIN+RANGE.
+const OVERSPEED_SHAKE_MARGIN = 12;     // m/s over cruise before the buffet starts
+const OVERSPEED_SHAKE_RANGE  = 50;     // m/s of overspeed from onset to full shake
+const OVERSPEED_SHAKE_MAX    = 0.06;   // radians — peak per-axis jitter at full shake
+
 let worldPlaneMesh = null;
 
 // --- Ground shadow ---
@@ -512,6 +520,15 @@ const sm = new StateMachine({
         clampToCeiling(physics, CEILING);
         worldPlaneMesh.position.set(physics.x, physics.y, physics.z);
         worldPlaneMesh.quaternion.set(physics.quat.x, physics.quat.y, physics.quat.z, physics.quat.w);
+        // Overspeed buffet: jitter the airframe past cruise speed (dives only).
+        const overspeed = physics.speed - physics.cfg.maxSpeed;
+        if (overspeed > OVERSPEED_SHAKE_MARGIN) {
+          const s = Math.min(1, (overspeed - OVERSPEED_SHAKE_MARGIN) / OVERSPEED_SHAKE_RANGE);
+          const amp = OVERSPEED_SHAKE_MAX * s;
+          worldPlaneMesh.rotateX((Math.random() - 0.5) * amp);
+          worldPlaneMesh.rotateY((Math.random() - 0.5) * amp);
+          worldPlaneMesh.rotateZ((Math.random() - 0.5) * amp);
+        }
         if (worldPlaneMesh.userData.propeller) worldPlaneMesh.userData.propeller.rotation.z += dt * physics.speed * 0.5;
         // Multiplayer: interpolate visible peers + broadcast our own state
         // at ~10 Hz. Throttling here (not per frame) keeps the wire rate

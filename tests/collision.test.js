@@ -6,8 +6,9 @@ import {
 const terrainAt = (h) => ({ getHeight: () => h });
 
 // Flier with an explicit nose direction (forward) for the graze/angle tests.
-function flier(y, fwd, { x = 0, z = 0, upY = 1, speed = 100 } = {}) {
-  return { x, z, y, up: { y: upY }, forward: fwd, speed };
+// Default speed (100) is comfortably above the graze min-speed gate (0.6×145).
+function flier(y, fwd, { x = 0, z = 0, upY = 1, speed = 100, maxSpeed = 145 } = {}) {
+  return { x, z, y, up: { y: upY }, forward: fwd, speed, cfg: { maxSpeed } };
 }
 // Unit forward vector for a dive `deg` below horizontal (heading -Z).
 const dive = (deg) => {
@@ -126,6 +127,20 @@ describe('grazeVerdict', () => {
   });
   it('steep dive beyond the threshold → null (crashes)', () => {
     expect(grazeVerdict(flier(100.5, dive(35)), terrainAt(100), R, VR)).toBeNull();
+  });
+  it('too slow → null (crashes) even at a shallow upright angle', () => {
+    // Below 0.6× cruise you pancake instead of skipping — no landing on slopes.
+    expect(grazeVerdict(flier(100.5, dive(5), { speed: 50 }), terrainAt(100), R, VR)).toBeNull();
+    // Fast enough → grazes.
+    expect(grazeVerdict(flier(100.5, dive(5), { speed: 130 }), terrainAt(100), R, VR)).not.toBeNull();
+  });
+  it('inverted → null (crashes) even at a shallow angle', () => {
+    // Same shallow approach that grazes upright, but rolled inverted (up.y = -1).
+    expect(grazeVerdict(flier(100.5, dive(5), { upY: -1 }), terrainAt(100), R, VR)).toBeNull();
+    // Knife-edge (up.y = 0) also can't skip off the ground.
+    expect(grazeVerdict(flier(100.5, dive(5), { upY: 0 }), terrainAt(100), R, VR)).toBeNull();
+    // Sanity: the upright version of the same impact still grazes.
+    expect(grazeVerdict(flier(100.5, dive(5), { upY: 1 }), terrainAt(100), R, VR)).not.toBeNull();
   });
   it('water contact → null (crashes) even at a shallow angle', () => {
     // seabed at -80, water surface at 0; plane skimming just above the water.
