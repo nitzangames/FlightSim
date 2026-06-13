@@ -156,12 +156,15 @@ const _biomeHemS = new THREE.Color();
 const _biomeHemG = new THREE.Color();
 
 // Per-frame palette interpolation toward the biome at the plane's position.
-// LERP rate ~0.02 → palette catches up to a new biome over ~1-2 seconds.
-const BIOME_LERP = 0.02;
+// Exponential decay at ~1.2/s → palette catches up to a new biome over
+// ~1-2 seconds regardless of display refresh rate (the old fixed 0.02/frame
+// converged 2× faster at 120 Hz than at 60).
+const BIOME_LERP_RATE = 1.2;
 function lerp(a, b, t) { return a + (b - a) * t; }
-function applyBiome(planeX, planeZ) {
+function applyBiome(planeX, planeZ, dt) {
   const b = biomeAt(planeX, planeZ);
   if (!worldScene.fog || !terrain.sun || !terrain.hemi) return;
+  const BIOME_LERP = 1 - Math.exp(-BIOME_LERP_RATE * dt);
   // Sky/background
   _biomeSky.setRGB(b.sky[0], b.sky[1], b.sky[2]);
   worldScene.background.lerp(_biomeSky, BIOME_LERP);
@@ -462,7 +465,7 @@ const sm = new StateMachine({
         terrain.update(spawnPos);
         // Use spawn position for the MENU palette so the picker shows the biome
         // the player will spawn into.
-        applyBiome(spawnPos.x, spawnPos.z);
+        applyBiome(spawnPos.x, spawnPos.z, dt);
         // Rotate the turntable
         activeUI && activeUI.update && activeUI.update(dt);
       },
@@ -486,6 +489,7 @@ const sm = new StateMachine({
         flyingCountdown = 1.5;
         _lastSustainedHapticMs = 0;
         _lastTrickFlashText = null;
+        scoreTracker.resetTricks();
         activeUI = buildHUD({
           root: uiRoot, version: VERSION,
           onSettings: () => settingsPanel.show(),
@@ -505,7 +509,7 @@ const sm = new StateMachine({
           // and jitters with dt variance.
           chase.update(physics, 0);
           terrain.update(worldCam.position);
-          applyBiome(physics.x, physics.z);
+          applyBiome(physics.x, physics.z, dt);
           updatePlaneShadow();
           const alt = physics.y - terrain.getHeight(physics.x, physics.z);
           const vNav = computeVillageNav(terrain, physics);
@@ -514,7 +518,7 @@ const sm = new StateMachine({
         }
         // Apply Y-invert at the input boundary so the rest of the stack
         // (physics, score, tricks) is unaware of the setting.
-        const ctrl = input.read();
+        const ctrl = input.read(dt);
         if (getSettings().invertY) ctrl.dragY = -ctrl.dragY;
         physics.update({ ...ctrl, dt });
         clampToCeiling(physics, CEILING);
@@ -543,7 +547,7 @@ const sm = new StateMachine({
         }
         chase.update(physics, dt);
         terrain.update(worldCam.position);
-        applyBiome(physics.x, physics.z);
+        applyBiome(physics.x, physics.z, dt);
         updatePlaneShadow();
         // Contrails: update AFTER chase.update so the camera is already at
         // its new pose for this frame, otherwise the billboard direction
@@ -724,6 +728,11 @@ document.addEventListener('visibilitychange', () => {
   } else {
     paused = false;
     lastFrame = performance.now();
+    // Cancel before re-requesting: if the page loaded in a hidden tab, the
+    // boot-time request is still pending (no 'hidden' event ever fired to
+    // cancel it) and we'd otherwise spawn a second self-perpetuating frame
+    // loop, running update+render twice per display frame forever.
+    cancelAnimationFrame(raf);
     raf = requestAnimationFrame(frame);
   }
 });
