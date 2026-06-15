@@ -774,15 +774,16 @@ requestAnimationFrame(() => {
   // someone else to host.
   if (window.PlaySDK && typeof window.PlaySDK.onReady === 'function') {
     window.PlaySDK.onReady(() => {
-      // Ask the native shell to rotate to landscape — Flight Sim plays best
-      // with a wide horizon. On mobile this drives the shell's ScreenOrientation
-      // lock (the WebView is portrait by default); the shell reverts to portrait
-      // when the player exits. On web / older SDKs it's a harmless no-op.
+      // Free the orientation lock so the sim follows the phone — portrait or
+      // landscape, switching live as the player rotates. The UI already adapts
+      // (applyOrientation + onOrientationChange below); 'any' lets the device
+      // actually rotate (the WebView is portrait-locked by default). The shell
+      // reverts to portrait on exit. On web / older SDKs it's a harmless no-op.
       // try/catch: PlaySDK's Proxy throws on unknown props, so a game redeployed
       // before the dynamic SDK picks up lockOrientation won't break.
       try {
         if (typeof window.PlaySDK.lockOrientation === 'function') {
-          Promise.resolve(window.PlaySDK.lockOrientation('landscape')).catch(() => {});
+          Promise.resolve(window.PlaySDK.lockOrientation('any')).catch(() => {});
         }
       } catch (e) { if (IS_LOCAL) console.warn('[flight-sim] lockOrientation unavailable', e); }
 
