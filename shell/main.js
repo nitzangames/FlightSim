@@ -774,6 +774,18 @@ requestAnimationFrame(() => {
   // someone else to host.
   if (window.PlaySDK && typeof window.PlaySDK.onReady === 'function') {
     window.PlaySDK.onReady(() => {
+      // Ask the native shell to rotate to landscape — Flight Sim plays best
+      // with a wide horizon. On mobile this drives the shell's ScreenOrientation
+      // lock (the WebView is portrait by default); the shell reverts to portrait
+      // when the player exits. On web / older SDKs it's a harmless no-op.
+      // try/catch: PlaySDK's Proxy throws on unknown props, so a game redeployed
+      // before the dynamic SDK picks up lockOrientation won't break.
+      try {
+        if (typeof window.PlaySDK.lockOrientation === 'function') {
+          Promise.resolve(window.PlaySDK.lockOrientation('landscape')).catch(() => {});
+        }
+      } catch (e) { if (IS_LOCAL) console.warn('[flight-sim] lockOrientation unavailable', e); }
+
       const mp = window.PlaySDK.multiplayer;
       if (!mp || typeof mp.quickMatch !== 'function') return;
       mp.on('game',       (from, data) => remotePlayers.onPeerState(from, data));
