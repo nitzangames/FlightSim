@@ -20,6 +20,7 @@ import { buildMenu } from '../lib/ui/menu.js';
 import { buildHUD } from '../lib/ui/hud.js';
 import { buildSettingsPanel } from '../lib/ui/settings-panel.js';
 import { buildCrashOverlay } from '../lib/ui/crash-overlay.js';
+import { pickOrientation } from '../lib/ui/orientation.js';
 import { biomeAt, biomeDominanceAt, BIOMES } from '../lib/game/biomes.js';
 import { buildScatterRegistry } from '../lib/scatter/index.js';
 
@@ -124,8 +125,33 @@ function resize() {
   worldCam.aspect = w / h; worldCam.updateProjectionMatrix();
   menuCam.aspect  = w / h; menuCam.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize);
-resize();
+
+// Toggle the landscape UI layout to match the actual drawable box. Driven by
+// the canvas client size (not PlaySDK.getOrientation): on narrow phones the
+// platform keeps the iframe a portrait strip even when the device is landscape,
+// so the box shape is what the UI must follow.
+function applyOrientation() {
+  const landscape = pickOrientation(canvas.clientWidth, canvas.clientHeight) === 'landscape';
+  uiRoot.classList.toggle('landscape', landscape);
+}
+
+// Single entry point for any viewport change: re-base the cameras AND re-pick
+// the UI orientation.
+function onViewportChange() {
+  resize();
+  applyOrientation();
+}
+
+window.addEventListener('resize', onViewportChange);
+// PlaySDK.onOrientationChange is the platform-sanctioned signal: window resize
+// can fire with stale dimensions right after a rotation, and the letterboxed
+// iframe makes window.matchMedia unreliable. Feature-detected — absent in local
+// dev, tests, and signed-out web, where the resize listener already covers us.
+if (window.PlaySDK && typeof window.PlaySDK.onOrientationChange === 'function') {
+  try { window.PlaySDK.onOrientationChange(onViewportChange); }
+  catch (e) { if (IS_LOCAL) console.warn('[flight-sim] onOrientationChange registration failed', e); }
+}
+onViewportChange();
 
 // --- worldScene contents (terrain + plane + chase + physics + input) ---
 const scatterGeometries = buildScatterRegistry(THREE);
