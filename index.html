@@ -49,11 +49,13 @@
     }
     @keyframes boot-spin { to { transform: rotate(360deg); } }
     .boot-phase { font-size: 13px; color: #8896aa; letter-spacing: 0.08em; }
-    /* DOM UI (menu, HUD, overlays) stays in a centered 9:16 portrait column
-       even when the 3D view fills a wide desktop window — so the cqi-based
-       layout keeps the exact proportions it has on mobile. container-type:size
-       makes every cqi unit inside resolve to THIS box, not the full window.
-       On a portrait iframe the box already equals the whole stage. */
+    /* DOM UI (menu, HUD, overlays). Default: a centered 9:16 portrait column,
+       so on a portrait box it equals the whole stage and the cq-based layout
+       keeps its mobile proportions. When the drawable box is landscape the
+       shell adds the `landscape` class (see shell/main.js applyOrientation) and
+       #ui-root fills the box instead. container-type:size makes every cq* unit
+       inside resolve to THIS box; the UI uses cqmin so text sizes off the short
+       dimension in either orientation. */
     #ui-root {
       position: absolute;
       top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -62,6 +64,11 @@
       container-type: size;
       pointer-events: none; z-index: 50;
       overflow: hidden;
+    }
+    /* Landscape: fill the wide box edge-to-edge instead of the portrait column. */
+    #ui-root.landscape {
+      top: 0; left: 0; transform: none;
+      width: 100%; height: 100%;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
