@@ -53,9 +53,9 @@
        so on a portrait box it equals the whole stage and the cq-based layout
        keeps its mobile proportions. When the drawable box is landscape the
        shell adds the `landscape` class (see shell/main.js applyOrientation) and
-       #ui-root fills the box instead. container-type:size makes every cq* unit
-       inside resolve to THIS box; the UI uses cqmin so text sizes off the short
-       dimension in either orientation. */
+       #ui-root becomes a centered, width-capped band instead (see below).
+       container-type:size makes every cq* unit inside resolve to THIS box; the
+       UI uses cqmin so text sizes off the short dimension in either orientation. */
     #ui-root {
       position: absolute;
       top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -65,10 +65,15 @@
       pointer-events: none; z-index: 50;
       overflow: hidden;
     }
-    /* Landscape: fill the wide box edge-to-edge instead of the portrait column. */
+    /* Landscape: keep the UI as a centered, width-capped band (letterboxed
+       left/right) rather than filling the wide box. Capping the width also caps
+       cqmin (it tracks the smaller side), so text stays phone-sized instead of
+       scaling up with the full landscape height. The base #ui-root centering
+       (top/left/transform) is kept; only the box size changes. 32rem ≈ the
+       width of the old desktop portrait column the HUD was tuned against. */
     #ui-root.landscape {
-      top: 0; left: 0; transform: none;
-      width: 100%; height: 100%;
+      width: min(100%, 32rem);
+      height: 100%;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
