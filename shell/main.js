@@ -81,6 +81,11 @@ const unlockState = new UnlockState(initialUnlocked, IS_LOCAL);
 let currentPlane = savedPlane || 'biplane';
 if (!PLANES[currentPlane] || !unlockState.isUnlocked(currentPlane)) {
   currentPlane = 'biplane';
+  // Self-heal a stale/inconsistent saved plane so the persisted value matches
+  // what we actually fly. This clears impossible states like plane='f86' while
+  // 'f86' isn't in the unlocked set — left behind in cloud storage by the old
+  // per-key "newer wins" anon-merge (fixed platform-side in migration 040).
+  if (savedPlane && savedPlane !== 'biplane') saveKey(LS_PLANE, 'biplane');
 }
 const currentStyle = 'cartograph';
 
