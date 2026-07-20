@@ -52,6 +52,13 @@ describe('UnlockState', () => {
     expect(u.isUnlocked('f22')).toBe(true);
   });
 
+  it('durably fulfills a purchased unlock exactly once', async () => {
+    const u = new UnlockState();
+    await expect(u.fulfillPurchasedUnlock('f22')).resolves.toBe(true);
+    await expect(u.fulfillPurchasedUnlock('f22')).resolves.toBe(false);
+    expect(new UnlockState().isUnlocked('f22')).toBe(true);
+  });
+
   it('unknown plane keys are reported as locked, not crashed', () => {
     const u = new UnlockState();
     expect(u.isUnlocked('nope')).toBe(false);

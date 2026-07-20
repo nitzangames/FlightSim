@@ -3,7 +3,7 @@ import { createTerrain } from '../lib/terrain/index.js';
 import { PLANES } from '../lib/game/planes.js';
 import { PlanePhysics, DragInput } from '../lib/plane/controller.js';
 import { ChaseCamera } from '../lib/plane/camera.js';
-import { ScoreTracker, loadStars } from '../lib/game/score.js';
+import { ScoreTracker, loadStarState } from '../lib/game/score.js';
 import { UnlockState, loadUnlocked }  from '../lib/game/unlocks.js';
 import { loadKey, saveKey } from '../lib/game/storage.js';
 import { loadSettings, getSettings } from '../lib/game/settings.js';
@@ -59,12 +59,12 @@ const seed = 0x46534D31;
 // PlaySDK.load (awaited here) pulls signed-in users' progress from the cloud
 // so it survives that eviction. Anonymous users still rely on localStorage.
 const [
-  initialStars,
+  initialStarState,
   initialUnlocked,
   initialVisited,
   savedPlane,
 ] = await Promise.all([
-  loadStars(),
+  loadStarState(),
   loadUnlocked(),
   loadVisited(),
   loadKey(LS_PLANE),
@@ -355,7 +355,10 @@ const input = new DragInput(canvas);
 // Trick-based score system. Persistent stars (★) + loop / barrel-roll /
 // inverted / low-altitude bonuses (see lib/game/score.js). One tracker
 // for the whole session.
-const scoreTracker = new ScoreTracker(initialStars);
+const scoreTracker = new ScoreTracker(
+  initialStarState.stars,
+  initialStarState.fulfilledNbucksReceipts,
+);
 
 // Multiplayer presence — autojoins a public room on PlaySDK ready (see
 // the .onReady wiring at the bottom of this file). Renders remote planes
